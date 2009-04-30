@@ -1,0 +1,240 @@
+<?xml version="1.0"?>
+<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<?xpl-require href="../CSS.xhtml"?>
+<?xpl-require href="../DOM/System.xhtml"?>
+<html>
+<head>
+<script>
+<![CDATA[
+
+Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.Selectors");
+Meeko.DOM.Selectors = (function() {
+
+var NodeSelector = function(target) {
+	if (!(this instanceof arguments.callee)) return new arguments.callee(target);
+
+	if (target) {
+		if (target.nodeType) this._target = target;
+		else throw "Target does not have NodeSelector interface";
+	}
+}
+NodeSelector.querySelector = function(target, selectorText) { return NodeSelector(target).querySelector(selectorText); }
+NodeSelector.querySelectorAll = function(target, selectorText) { return NodeSelector(target).querySelectorAll(selectorText); }
+NodeSelector.prototype.querySelector = function(selectorText) {
+	var target = this._target || this;
+	if (null == selectorText) return false;
+	return getElementsBySelector(target, selectorText, true);
+}
+NodeSelector.prototype.querySelectorAll = function(selectorText) {
+	var target = this._target || this;
+	if (null == selectorText) return false;
+	return getElementsBySelector(target, selectorText, false);
+}
+var ElementSelector = function(target) {
+	if (!(this instanceof arguments.callee)) return new arguments.callee(target);
+
+	if (target) {
+		if (target.nodeType == 1 /* Node.ELEMENT_NODE */) this._target = target;
+		else throw "Target does not have ElementSelector interface"; 
+	}
+}
+ElementSelector.prototype = new NodeSelector();
+ElementSelector.matchesSelector = function(target, selectorText) { return ElementSelector(target).matchesSelector(selectorText); }
+ElementSelector.prototype.matchesSelector = function(selectorText) {
+	var target = this._target || this;
+	if (null == selectorText) return false;
+	var selectorList = getSelector(selectorText);
+	if (!selectorList) return false;
+	for (var j=0, selector; selector=selectorList[j]; j++) {
+		if (selector.test(target)) return true;
+	}
+	return false;
+}
+
+var CSS = Meeko.CSS;
+var Relative = CSS.RelativeSelector;
+var Condition = CSS.Condition;
+var cssParser = new CSS.Parser();
+var selectors = {};
+var elementsByTagName = {};
+
+function getSelector(selectorText) {
+	var selectorList = selectors[selectorText];
+	if (!selectorList) {
+		selectorList = cssParser.parseSelectors(selectorText);
+		selectors[selectorText] = selectorList;
+	}
+	return selectorList;
+}
+
+function getElementsBySelector(scope, selectorText, single) { // TODO namespaces??
+	if (null == selectorText) return false;
+	var selectorList = getSelector(selectorText);
+	var nodeList = [];
+	if (!selectorList) return (single) ? null : nodeList;
+	
+	// First up check for ID selectors which result in instant evaluation
+	var id = selectorList.id;
+	if (id == null) id = getId(selectorList); 
+	if (id) { // correlates to a single selector in the list
+		var el = document.getElementById(id);
+		if (scope.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_CONTAINED_BY) { // FIXME IE
+			if (selectorList[0].test(el)) return (single) ? el : [ el ];
+			else return (single) ? null : nodeList;
+		}
+		else return (single) ? null : nodeList;
+	}
+	
+	// check if there is a unified ancestor ID which is also contained by scope
+	// The expectation is that this is the alternate for :scope
+	var ancestorId = selectorList.ancestorId;
+	if (ancestorId == null) ancestorId = getAncestorId(selectorList);
+	if (ancestorId) {
+		var el = document.getElementById(ancestorId);
+		if (!el) return (single) ? null : nodeList;
+		if (scope.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_CONTAINED_BY) scope = el; // FIXME IE
+	}
+	
+	// check if there is one className we are searching for
+	var className = selectorList.className;
+	if (className == null) className = getClassNameText(selectorList);
+
+	// check if there is one element type we are searching for
+	var tagName = selectorList.tagName;
+	if (tagName == null) tagName = getTagName(selectorList);
+
+	// TODO test whether it is faster to use getElementsByClassName or getElementsByTagName
+	var descendants = ("*" == tagName && "" != className && scope.getElementsByClassName) ?
+			scope.getElementsByClassName(className) :
+			scope.getElementsByTagName(tagName);
+	for (var i=0, current; current=descendants[i]; i++) {
+		for (var j=0, selector; selector=selectorList[j]; j++) {
+			if (selector.test(current)) {
+				if (single) return current;
+				nodeList.push(current);
+				break;
+			}
+		}
+	}
+	return (single) ? null : nodeList;
+}
+
+function getId(selectorList) {
+	var id = selectorList.id; // selectorList.id is set to false if not applicable
+	if (id == null) { // not checked yet, so do that now
+		if (selectorList.length == 1) {
+			var selector = selectorList[0];
+			id = getSelectorId(selector);
+			selectorList.id = (id) ? id : false;
+		}
+		else selectorList.id = false;
+	}
+	return selectorList.id;
+}
+function getSelectorId(selector) {
+	var steps = selector.steps;
+	var step = steps[steps.length-1];
+	for (var j=0, cond; cond=step.conditions[j]; j++) {
+		if (cond.conditionType == Condition.ID_CONDITION) return cond.value;
+	}
+	return null;
+}
+
+function getAncestorId(selectorList) {
+	var ancestorId = selectorList.ancestorId;
+	if (ancestorId == null) {
+		for (var j=0, selector; selector=selectorList[j]; j++) {
+			var id = getSelectorAncestorId(selector);
+			if (!id) { // if any selector lacks an ancestorId then ignore them all
+				ancestorId = false; break;
+			}
+			if (!ancestorId) { ancestorId = id; continue; }
+			if (ancestorId == id) continue;
+			ancestorId = false; break;
+		}
+		selectorList.ancestorId = ancestorId;
+	}
+	return selectorList.ancestorId;
+}
+function getSelectorAncestorId(selector) {
+	var steps = selector.steps;
+	for (var i=steps.length-2, step; step=steps[i]; i--) {
+		var conditions = step.conditions;
+		var relType = steps[i+1].relationType;
+		for (var j=0, cond; cond=conditions[j]; j++) {
+			if (cond.conditionType == Condition.ID_CONDITION && 
+				(relType == Relative.CHILD_RELATIVE || relType == Relative.DESCENDANT_RELATIVE)
+				) return cond.value;
+		}
+	}
+}
+
+function getClassNameText(selectorList) {
+	var text = selectorList.className;
+	if (text == null) {
+		var table = getSelectorClassNameTable(selectorList[0]);
+		for (var j=1, selector; selector=selectorList[j]; j++) {
+			var nextTable = getSelectorClassNameTable(selector);
+			for (var className in table) {
+				if (!nextTable[className]) delete table[className];
+			}
+		}
+		var text = "";
+		for (var className in table) {
+			if (text != "") text += " ";
+			text += className;
+		}
+		selectorList.className = text;
+	}
+	return selectorList.className;
+}
+
+function getSelectorClassNameTable(selector) {
+	var steps = selector.steps; // FIXME don't want to access internal data directly. Should be an API cal
+	var conditions = steps[steps.length-1].conditions;
+	var table = {};
+	for (var i=0, cond; cond=conditions[i]; i++) {
+		if (cond.conditionType == Condition.CLASS_CONDITION) {
+			var className = cond.value;
+			if (!table[className]) table[className] = true;
+		}
+	}
+	return table;
+}
+
+function getTagName(selectorList) {
+	var tagName = selectorList.tagName; // selectorList.tagName is set to "*" if not applicable
+	if (tagName == null) {
+		for (var j=0, selector; selector=selectorList[j]; j++) {
+			var selectorTagName = getSelectorTagName(selector);
+			if (!selectorTagName || selectorTagName == "*") { tagName = "*"; break; }
+			if (j == 0) { tagName = selectorTagName; continue; }
+			if (j > 0 && selectorTagName == tagName) continue;
+			tagName = "*"; break; // shouldn't reach here
+		}
+		selectorList.tagName = tagName;
+	}
+	return selectorList.tagName;
+}
+function getSelectorTagName(selector) {
+	var steps = selector.steps; // FIXME don't want to access internal data directly. Should be an API cal
+	var nodeTest = steps[steps.length-1].conditions[0];
+	if (nodeTest.conditionType == Condition.NODE_TEST_CONDITION && nodeTest.nodeType == 1 /* Node.ELEMENT_NODE */) return nodeTest.localName;
+	else return "*";
+}
+
+return {
+	NodeSelector: NodeSelector,
+	ElementSelector: ElementSelector,
+	Document: NodeSelector,
+	Element: ElementSelector
+};
+
+})();
+
+Meeko.XPL.Namespace.enhance(window, Meeko.DOM.Selectors);
+
+]]>
+</script>
+</head>
+</html>

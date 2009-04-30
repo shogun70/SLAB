@@ -1,0 +1,169 @@
+<?xml version="1.0"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script>
+<![CDATA[
+if (!this.Meeko) this.Meeko = {};
+
+Meeko['Javascript 1.6'] = (function() {
+
+var Array = function() {}
+Array.prototype = new this.Array();
+
+Array.indexOf = function(array, val, start) {
+	var n = array.length;
+	if (start == null) start = 0;
+	for (var i=start; i<n; i++) {
+		if (val == array[i]) return i;
+	}
+	return -1;
+}
+
+Array.lastIndexOf = function(array, val, start) {
+	var n = array.length;
+	if (start == null) start = n-1;
+	for (var i=start; i>=0; i--) {
+		if (val == array[i]) return i;
+	}
+	return -1;
+}
+
+Array.filter = function(array, callback, context) {
+	var out = [];
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array[i], i, array);
+		if (rc) out.push(array[i]);
+	}
+	return out;
+}
+
+Array.every = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array[i], i, array);
+		if (!rc) return false;
+	}
+	return true;
+}
+
+Array.forEach = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		callback.call(context, array[i], i, array);
+	}
+}
+
+
+Array.map = function(array, callback, context) {
+	var out = [];
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array[i], i, array);
+		out[i] = rc;
+	}
+	return out;
+}
+
+Array.some = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array[i], i, array);
+		if (rc) return true;
+	}
+	return false;
+}
+
+// NOTE non-standard Array methods
+Array.compare = function(array1, array2, cmp) { // NOTE compares n elements where n is length of shorter array
+	if (!cmp) cmp = function(a,b) { return (a < b) ? -1 : (a > b) ? 1 : 0 };
+	var rc = 0;
+	var n1 = array1.length, n2 = array2.length, n = (n1 <= n2) ? n1 : n2;
+	for (var i=0; i<n; i++) {
+		if (rc = cmp(array1[i], array2[i])) return rc;
+	}
+	return rc;
+}
+
+Array.prototype.indexOf = function(val, start) { return Array.indexOf(this, val, start); }
+Array.prototype.lastIndexOf = function(val, start) { return Array.lastIndexOf(this, val, start); }
+Array.prototype.every = function(callback, context) { return Array.every(this, callback, context); }
+Array.prototype.filter = function(callback, context) { return Array.filter(this, callback, context); }
+Array.prototype.forEach = function(callback, context) { return Array.forEach(this, callback, context); }
+Array.prototype.map = function(callback, context) { return Array.map(this, callback, context); }
+Array.prototype.some = function(callback, context) { return Array.some(this, callback, context); }
+Array.prototype.compare = function(array, cmp) { return Array.compare(this, array, cmp); }
+
+var Object = function() {}
+Object.prototype = new this.Object();
+
+// NOTE non-standard Object methods
+Object.copy = function(dest, source, fields, override) {
+	function _copy(dst, src, name, over) {
+		if (!over && (dst.hasOwnProperty && dst.hasOwnProperty(name) || dst[name] != null)) return;
+		dst[name] = src[name];
+	}
+	if (fields && fields.length) {
+		for (var n=fields.length, i=0; i<n; i++) {
+			var name = fields[i];
+			_copy(dest, source, name, override);
+		}
+	}
+	else {
+		for (var name in source) _copy(dest, source, name, override);
+	}
+	return dest;
+}
+
+Object.toLoggerString = function(object) { // NOTE the complexity here is work-arounds for Safari-2
+	var string = "";
+	for (var field in object) {
+		var slot = object[field];
+		var t = typeof slot;
+		var sz;
+		try { if (t == "object" && slot.length) t = "array"; }
+		catch (error) { }
+		try { var sz = "" + slot; }
+		catch (error) { t = "null"; }
+		if (t == "function") string += field + ": " + "function() {}" + "\n";
+		else if (t == "array") string += field + ": " + "[ " + slot + " ]" + "\n";
+		else if (t == "null") string += field + ": " + "null" + "\n";
+		else string += field + ": " + slot + "\n";
+	}
+	return string;
+}
+
+Object.forEach = function(object, callback, context) {
+	for (var key in object) {
+		var val = object[key];
+		if (typeof val != "function") callback.call(context, val, key, object);
+	}
+}
+
+var forEach = function(object, callback, context) {
+	if (object.forEach instanceof Function) {
+		object.forEach(callback, context);
+	}
+	else if (null != object.length) {
+		Array.forEach(object, callback, context);
+	}
+	else {
+		Object.forEach(object, callback, context);
+	}
+}
+
+return {
+	Array: Array,
+	Object: Object,
+	forEach: forEach
+}
+
+})();
+
+Meeko.XPL.Namespace.enhance(window, Meeko['Javascript 1.6']);
+
+]]>
+</script>
+</head>
+</html>

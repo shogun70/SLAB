@@ -1,0 +1,298 @@
+<?xml version="1.0"?>
+<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<?xpl-require href="../DOM/System.xhtml"?>
+<?xpl-require href="../DOM/Core.xhtml"?>
+<html>
+<head>
+<script>
+<![CDATA[
+Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.Traversal");
+Meeko.DOM.Traversal = (function() {
+
+var privateKey = Math.random();
+
+var NodeFilter = function() {}
+// Constants returned by acceptNode
+NodeFilter.FILTER_ACCEPT = 1;
+NodeFilter.FILTER_REJECT = 2;
+NodeFilter.FILTER_SKIP = 3;
+
+// Constants for whatToShow
+NodeFilter.SHOW_ALL = 0xFFFFFFFF;
+NodeFilter.SHOW_ELEMENT = 0x00000001;
+NodeFilter.SHOW_ATTRIBUTE = 0x00000002;
+NodeFilter.SHOW_TEXT = 0x00000004;
+NodeFilter.SHOW_CDATA_SECTION = 0x00000008;
+NodeFilter.SHOW_ENTITY_REFERENCE = 0x00000010;
+NodeFilter.SHOW_ENTITY = 0x00000020;
+NodeFilter.SHOW_PROCESSING_INSTRUCTION = 0x00000040;
+NodeFilter.SHOW_COMMENT = 0x00000080;
+NodeFilter.SHOW_DOCUMENT = 0x00000100;
+NodeFilter.SHOW_DOCUMENT_TYPE = 0x00000200;
+NodeFilter.SHOW_DOCUMENT_FRAGMENT = 0x00000400;
+NodeFilter.SHOW_NOTATION = 0x00000800;
+
+var TreeWalker = function(key) {
+	if (key != privateKey) throw "TreeWalker is not a constructor";
+}
+TreeWalker.prototype._init = function() {
+	var xplParams = [ "root", "whatToShow", "filter", "expandEntityReferences" ];
+	var n = xplParams.length;
+	// if (arguments.length < n) throw "Improper argument list in createTreeWalker"; // FIXME
+	for (var i=0; i<n; i++) {
+		var name = xplParams[i];
+		this[name] = arguments[i];
+	}
+	if (Node.ATTRIBUTE_NODE == this.root.nodeType) { // FIXME
+		this.root = null;
+		throw "TreeWalker does not handle attributes";
+	}
+	if (this.filter && "function" != typeof this.filter.acceptNode) { // TODO what is appropriate here??
+		logger.warn("filter parameter does not have valid acceptNode() for TreeWalker");
+		this.filter = null; 
+	}
+	this.currentNode = this.root;
+}
+TreeWalker.prototype._acceptNode = function(node) {
+	if (0x1 << (node.nodeType-1) & this.whatToShow) {
+		return (this.filter) ?
+			this.filter.acceptNode(node) : // FIXME assumes filter.acceptNode is valid
+			NodeFilter.FILTER_ACCEPT;
+	}
+	else return NodeFilter.FILTER_SKIP;
+}
+TreeWalker.prototype.firstChild = function() {
+	for (var node=this.currentNode.firstChild; node; node=node.nextSibling) {
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+	}
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.lastChild = function() {
+	for (var node=this.currentNode.lastChild; node; node=node.previousSibling) {
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+	}
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.nextSibling = function() {
+	for (var node=this.currentNode.nextSibling; node; node=node.nextSibling) {
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+	}
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.previousSibling = function() {
+	for (var node=this.currentNode.previousSibling; node; node=node.previousSibling) {
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+	}
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.parentNode = function() {
+	for (var node=this.currentNode.parentNode; node; node=node.parentNode) {
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+		if (node == this.root) return null; // don't step upwards from root
+	}
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.nextNode = function() {
+	var node = this.currentNode;
+	var reject = false;
+	for (;;) {
+		if (!reject && node.firstChild) node = node.firstChild;
+		else for (; node; node=node.parentNode) {
+			if (node == this.root) return null;
+			if (!node.nextSibling) continue;
+			node = node.nextSibling;
+			break;
+		}
+		reject = false;
+		var rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+		if (rc == NodeFilter.FILTER_SKIP) continue;
+		if (rc == NodeFilter.FILTER_REJECT) reject = true;
+	}
+	
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.prototype.previousNode = function() {
+	if (!this.root) throw "TreeWalker is not attached to DOM";
+	if (!this.currentNode) return null;
+	var prev = this.currentNode;
+	for (;;) {
+		var rc;
+		if (node.previousSibling) {
+			var node = node.previousSibling;
+			rc = this._acceptNode(node);
+			if (rc == NodeFilter.FILTER_REJECT) continue;
+			if (node.lastChild) while (node.lastChild) node = node.lastChild;
+		}
+		else node = node.parentNode;		
+		rc = this._acceptNode(node);
+		if (rc == NodeFilter.FILTER_ACCEPT) break;
+		if (node == this.root) return null;
+	}
+	
+	if (node) this.currentNode = node;
+	return node;
+}
+TreeWalker.forEach = function(iter, fn, context) {
+	if (!iter.nextNode) throw "Object doesn't have TreeWalker interface";
+	var node;
+	while (node = iter.nextNode()) fn.call(context, node); // TODO try / catch??
+}
+TreeWalker.prototype.forEach = function(fn, context) {
+	return TreeWalker.forEach(this, fn, context);
+}
+
+var NodeIterator = function(key) {
+	if (key != privateKey) throw "NodeIterator is not a constructor";
+}
+NodeIterator.prototype._init = function() {
+	var xplParams = [ "root", "whatToShow", "filter", "expandEntityReferences" ];
+	var n = xplParams.length;
+	// if (arguments.length < n) throw "Improper argument list in createNodeIterator"; // FIXME
+	for (var i=0; i<n; i++) {
+		var name = xplParams[i];
+		this[name] = arguments[i];
+	}
+	if (Node.ATTRIBUTE_NODE == this.root.nodeType) { // FIXME
+		this.root = null;
+		throw "NodeIterator does not handle attributes";
+	}
+	if (this.filter && "function" != typeof this.filter.acceptNode) { // TODO what is appropriate here??
+		logger.warn("filter parameter does not have valid acceptNode() for NodeIterator");
+		this.filter = null; 
+	}
+	this.currentNode = null;
+}
+NodeIterator.prototype.nextNode = function() {
+	if (!this.root) throw "NodeIterator is not attached to DOM";
+	var next = (this.currentNode) ? this.currentNode : this.root;
+	function nextNode(node) {
+		if (node.firstChild) return node.firstChild;
+		for (; node!=this.root; node=node.parentNode) {
+			if (node.nextSibling) return node.nextSibling;	
+		}
+		return null;
+	}
+	do { // TODO expandEntityReferences
+		if (!(0x1 << (next.nodeType-1) & this.whatToShow)) continue;
+		if (this.filter) {
+			var rc = this.filter.acceptNode(next);
+			if (rc == NodeFilter.FILTER_ACCEPT) break;
+			else continue;
+		}
+		break;
+	} while (next = nextNode.call(this, next));
+	
+	if (next) this.currentNode = next;
+	return next;
+}
+NodeIterator.prototype.previousNode = function() {
+	if (!this.root) throw "NodeIterator is not attached to DOM";
+	if (!this.currentNode) return null;
+	var prev = this.currentNode;
+	function prevNode(node) {
+		if (node == this.root) return null;
+		if (node.previousSibling) {
+			node = node.previousSibling;
+			while (node.lastChild) node = node.lastChild;
+			return node;
+		}
+		return (node.parentNode);
+	}
+	while (prev = prevNode.call(this, prev)) {
+		if (!(0x1 << (next.nodeType-1) & this.whatToShow)) continue;
+		if (this.filter) {
+			var rc = this.filter.acceptNode(next);
+			if (rc == NodeFilter.FILTER_ACCEPT) break;
+			else continue;
+		}
+		break;		
+	}
+	
+	if (prev) this.currentNode = prev;
+	return prev;
+}
+NodeIterator.prototype.detach = function() {
+	this.root = null;	
+}
+NodeIterator.forEach = function(iter, fn, context) {
+	if (!iter.nextNode) throw "Object doesn't have NodeIterator interface";
+	var node;
+	while (node = iter.nextNode()) fn.call(context, node); // TODO try / catch??
+}
+NodeIterator.prototype.forEach = function(fn, context) {
+	return NodeIterator.forEach(this, fn, context);
+}
+
+var documentTraversal = {};
+documentTraversal.createTreeWalker = function() {
+	var instance = new TreeWalker(privateKey);
+	instance._init.apply(instance, arguments);
+	return instance;
+}
+documentTraversal.createNodeIterator = function() {
+	var instance = new NodeIterator(privateKey);
+	instance._init.apply(instance, arguments);
+	return instance;
+}
+
+return {
+	NodeFilter: NodeFilter,
+	TreeWalker: TreeWalker,
+	NodeIterator: NodeIterator,
+	document: documentTraversal
+}
+})();
+
+Meeko.XPL.Namespace.enhance(window, Meeko.DOM.Traversal);
+
+try {{
+var iter = document.createTreeWalker(document, NodeFilter.SHOW_ALL, null, false);
+if (!iter.forEach) {
+	document.__createTreeWalker = document.createTreeWalker;
+	document.createTreeWalker = function(root, whatToShow, filter, entityReferenceExpansion) {
+		// NOTE fix for Safari-3 which treats filter as an acceptNode() function
+		var _filter = function(node) { return arguments.callee.acceptNode(node); }
+		Object.copy(_filter, filter);
+		var iter = this.__createTreeWalker(root, whatToShow, _filter, entityReferenceExpansion);
+		// NOTE and add forEach method
+		iter.forEach = TreeWalker.prototype.forEach;
+		return iter;
+	}
+}
+}}
+catch (error) { document.createTreeWalker = Meeko.DOM.Traversal.document.createTreeWalker; }
+
+try {{
+var iter = document.createNodeIterator(document, NodeFilter.SHOW_ALL, null, false);
+if (!iter.forEach) {
+	document.__createNodeIterator = document.createNodeIterator;
+	document.createNodeIterator = function(root, whatToShow, filter, entityReferenceExpansion) {
+		// NOTE fix for Safari-3 which treats filter as an acceptNode() function
+		var _filter = function(node) { return arguments.callee.acceptNode(node); }
+		Object.copy(_filter, filter);
+		var iter = this.__createNodeIterator(root, whatToShow, _filter, entityReferenceExpansion);
+		// NOTE and add forEach method
+		iter.forEach = NodeIterator.prototype.forEach;
+		return iter;
+	}
+}
+}}
+catch (error) { document.createNodeIterator = Meeko.DOM.Traversal.document.createNodeIterator; }
+
+
+]]>
+</script>
+</head>
+</html>

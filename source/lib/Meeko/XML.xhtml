@@ -1,0 +1,205 @@
+<?xml version="1.0"?>
+<?xpl-require href="Net.xhtml"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script type="text/javascript">
+<![CDATA[
+
+/*
+ NOTE See Microsoft's reccomendation for choosing the right version of MSXML
+ at http://blogs.msdn.com/xmlteam/archive/2006/10/23/using-the-right-version-of-msxml-in-internet-explorer.aspx
+*/
+
+if (!this.Meeko) this.Meeko = {};
+
+Meeko.XML = (function() {
+
+var createActiveXObject = function(name) {
+	var versions = [ "Msxml2.%name%", "Microsoft.%name%" ];
+	var object;
+	for (var n = versions.length, i=0; i<n; i++) {
+		var oName = versions[i].replace("%name%", name);
+		try { object = new ActiveXObject(oName); } catch (error) { continue; }
+		break;
+	}
+	if (!object) throw "" + name + " not supported on this platform";
+	return object;
+}
+var URIParser = Meeko.Net.URIParser;
+
+var DOMParser = this.DOMParser || (function() {
+
+var DOMParser = function() {}
+
+DOMParser.prototype.parseFromString = function(text, mimeType) {
+	var xmlDom;
+	if (!ActiveXObject) throw "DOMParser.parseFromString not supported";
+	xmlDom = createActiveXObject("XMLDOM");
+	xmlDom.async = "false";
+	xmlDom.loadXML(text);
+	return xmlDom;
+}
+
+return DOMParser;
+
+})();
+
+var HttpRequest = function() {};
+HttpRequest.hosts = {};
+
+HttpRequest.prototype.open = function(method, url, async) {
+	var loc = HttpRequest.getLocation(url, location.href);
+	var HostRq = HttpRequest.hosts[loc.host];
+	if (!HostRq) throw "HttpRequest not valid for that host";
+	var rq = new HostRq(loc.host);
+	this._httpRequest = rq;
+	var httpRq = this;
+	rq.onreadystatechange = function(event) { httpRq.handler(event) };
+	rq.open(method, loc.relative, async);
+}
+
+HttpRequest.prototype.send = function(data) {
+	var rq = this._httpRequest;
+	rq.send(data);
+}
+
+HttpRequest.prototype.handler = function(event) {
+	var rq = this._httpRequest;
+	if (4 == rq.readyState) {
+		var result = rq;
+		this._request = result._request;
+		this._response = result._response;
+		this.status = result.status;
+		this.statusText = result.statusText;
+		this.responseText = result.responseText
+		this.readyState = 4;
+		if (this.onreadystatechange) this.onreadystatechange({ type: "readystatechange" });
+	}
+}
+
+
+HttpRequest.getLocation = function(uri, baseURI) {
+	var loc = URIParser.parseUri(uri, baseURI);
+	return loc;
+}
+
+var xXMLHttpRequest = this.XMLHttpRequest || function() {
+	return createActiveXObject("XMLHTTP"); 
+};
+
+var XMLHttpRequest = function() {
+	var rq = this;
+	this.readyState = 0;
+	this._async = false;
+	
+	this._useXHR = true;
+	this._xhrHandler = function(event) { rq._xhrReadyStateChange(event); }
+	this._xhr = new xXMLHttpRequest();
+	this._xhr.onreadystatechange = this._xhrHandler;
+
+	this._hrHandler = function(event) { rq._hrReadyStateChange(event); }
+	this._hr = new HttpRequest();
+	this._hr.onreadystatechange = this._hrHandler;
+}
+
+XMLHttpRequest.UNSENT = 0;
+XMLHttpRequest.OPENED = 1;
+XMLHttpRequest.HEADERS_RECEIVED = 2;
+XMLHttpRequest.LOADING = 3;
+XMLHttpRequest.DONE = 4;
+
+if (xXMLHttpRequest.wrapped) XMLHttpRequest.wrapped = xXMLHttpRequest.wrapped;
+else XMLHttpRequest.wrapped = xXMLHttpRequest;
+
+XMLHttpRequest.prototype._xhrReadyStateChange = function(event) {
+	if (this.readyState == this._xhr.readyState) return;
+	this.readyState = this._xhr.readyState;
+	if (4 == this.readyState) {
+		var result = this._xhr;
+		this._request = result._request;
+		this._response = result._response;
+		this.status = result.status;
+		this.statusText = result.statusText;
+		this.responseText = result.responseText;
+		this.responseXML = result.responseXML;
+	}
+	if (this.onreadystatechange) this.onreadystatechange({ type: "readystatechange" });
+}
+
+XMLHttpRequest.prototype._hrReadyStateChange = function(event) {
+	if (this.readyState == this._hr.readyState) return;
+	this.readyState = this._hr.readyState;
+	if (4 == this.readyState) {
+		var result = this._hr;
+		this._request = result._request;
+		this._response = result._response;
+		this.status = result.status;
+		this.statusText = result.statusText;
+		this.responseText = result.responseText;
+		this.responseXML = (new DOMParser()).parseFromString(result.responseText.toString(), // NOTE toString() only needed for Opera-9.5beta
+						"text/xml"); // TODO mime-type checking
+	}
+	if (this.onreadystatechange) this.onreadystatechange({ type: "readystatechange" });
+}
+
+XMLHttpRequest.prototype.open = function(method, url, async) {
+	this._method = method.toUpperCase();
+	this._url = url;
+	this._async = async;
+	try { // Firefox-2 and Safari-3 throw on cross-domain open
+		this._xhr.open(method, url, async);
+		this._xhr.onreadystatechange = this._xhrHandler;
+		this._useXHR = true;
+		if (0 == this._xhr.readyState) this._useXHR = false; // Safari-2
+	}
+	catch (err) { this._useXHR = false; }
+	try {
+		this._hr.open(method, url, async);
+	}
+	catch (err) { }
+}
+
+XMLHttpRequest.prototype.send = function(data) {
+	// FIXME this HTTP struct should be in Meeko.stuff.xplSystem.prefetch[url]
+	var prefetchText = xplSystem.prefetch[this._url];
+	if ("GET" == this._method && prefetchText) {
+		this.readyState = 4;
+		this.status = "200";
+		this.statusText = "OK";
+		this.responseText = prefetchText;
+		try { this.responseXML = (new DOMParser()).parseFromString(prefetchText, "text/xml"); } // TODO Opera throws on fail
+		catch (err) { } // FIXME logger.warn
+		if (this.onreadystatechange) {
+			this.onreadystatechange({ type: "readystatechange" });
+//			var xhr = this;
+//			window.setTimeout(function() { xhr.onreadystatechange({ type: "readystatechange" }); }, 10); // FIXME
+		}
+		return;
+	}
+
+	if (this._useXHR) try { // Opera throws on send
+		this._xhr.send(data);
+	}
+	catch (err) { this._useXHR = false; }
+	if (!this._useXHR) this._hr.send(data);
+	if (!this._async) { // NOTE We do this in case onreadystatechange doesn't work for sync requests. eg Firefox-3beta
+		if (this._useXHR) this._xhrReadyStateChange();
+		else this._hrReadyStateChange();
+	}
+}
+
+return {
+	DOMParser: DOMParser,
+	HttpRequest: HttpRequest,
+	XMLHttpRequest: XMLHttpRequest
+}
+
+})();
+
+window.XMLHttpRequest = Meeko.XML.XMLHttpRequest;
+Meeko.XPL.Namespace.enhance(window, Meeko.XML);
+
+]]>
+</script>
+</head>
+</html>

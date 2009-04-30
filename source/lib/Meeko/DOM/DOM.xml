@@ -1,0 +1,50 @@
+<package xmlns="http://www.meekostuff.net/xpl">
+
+<class name="Node">
+	<constant name="ELEMENT_NODE">1</constant>
+	<constant name="ATTRIBUTE_NODE">2</constant>
+	<constant name="TEXT_NODE">3</constant>
+	<constant name="CDATA_SECTION_NODE">4</constant>
+	<constant name="ENTITY_REFERENCE_NODE">5</constant>
+	<constant name="ENTITY_NODE">6</constant>
+	<constant name="PROCESSING_INSTRUCTION_NODE">7</constant>
+	<constant name="COMMENT_NODE">8</constant>
+	<constant name="DOCUMENT_NODE">9</constant>
+	<constant name="DOCUMENT_TYPE_NODE">10</constant>
+	<constant name="DOCUMENT_FRAGMENT_NODE">11</constant>
+	<constant name="NOTATION_NODE">12</constant>
+</class>
+
+<class name="Event">
+	<constant name="CAPTURING_PHASE">1</constant>
+	<constant name="AT_TARGET">2</constant>
+	<constant name="BUBBLING_PHASE">3</constant>
+</class>
+
+<class name="MutationEvent">
+	<constant name="MODIFICATION">1</constant>
+	<constant name="ADDITION">2</constant>
+	<constant name="REMOVAL">3</constant>
+</class>
+
+<class name="DOMException">
+	<constant name="INDEX_SIZE_ERR">1</constant>
+	<constant name="DOMSTRING_SIZE_ERR">2</constant>
+	<constant name="HIERARCHY_REQUEST_ERR">3</constant>
+	<constant name="WRONG_DOCUMENT_ERR">4</constant>
+	<constant name="INVALID_CHARACTER_ERR">5</constant>
+	<constant name="NO_DATA_ALLOWED_ERR">6</constant>
+	<constant name="NO_MODIFICATION_ALLOWED_ERR">7</constant>
+	<constant name="NOT_FOUND_ERR">8</constant>
+	<constant name="NOT_SUPPORTED_ERR">9</constant>
+	<constant name="INUSE_ATTRIBUTE_ERR">10</constant>
+	<constant name="INVALID_STATE_ERR">11</constant>
+	<constant name="SYNTAX_ERR">12</constant>
+	<constant name="INVALID_MODIFICATION_ERR">13</constant>
+	<constant name="NAMESPACE_ERR">14</constant>
+	<constant name="INVALID_ACCESS_ERR">15</constant>
+	<constant name="VALIDATION_ERR">16</constant>
+	<constant name="TYPE_MISMATCH_ERR">17</constant>
+</class>
+
+</package>

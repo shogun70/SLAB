@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<!-- FIXME This feature has been rolled into Javascript-1.6 so this file should be removed -->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>forEach</title>
+	<script type="text/javascript">
+<![CDATA[
+if (!this.Meeko) this.Meeko = {};
+
+Meeko.forEach = (function() {
+
+var Object = function() {}
+Object.prototype = new this.Object;
+
+Object.forEach = function(object, callback, context) {
+	for (var key in object) {
+		var val = object[key];
+		if (typeof val != "function") callback.call(context, val, key, object);
+	}
+}
+
+forEach = function(object, callback, context) {
+	if (object.forEach instanceof Function) {
+		object.forEach(callback, context);
+	}
+	else if (null != object.length) {
+		Array.forEach(object, callback, context);
+	}
+	else {
+		Object.forEach(object, callback, context);
+	}
+}
+
+return {
+	Object: Object,
+	forEach: forEach
+}
+
+})();
+]]>
+	</script>
+</head>
+<body>
+    <!-- Insert your content here -->
+</body>
+</html>

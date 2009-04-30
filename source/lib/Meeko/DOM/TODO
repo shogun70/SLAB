@@ -1,0 +1,22 @@
+** Generic **
+
+- Test & Demos
+
+- Initialization options
+
+- redo SAC parser (or replace)
+
+- getters and setters if possible
+
+- mapping from standard events to real-world events
+	- textInput -> keypress (and paste events)
+	- DOMAttrModified -> propertychange
+
+
+** Browser specific **
+* Safari / Webkit *
+
+- setAttribute / removeAttribute don't trigger DOMAttrModified
+
+- textContent for XML elements in Safari2
+

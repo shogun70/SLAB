@@ -1,0 +1,581 @@
+<?xml version="1.0"?>
+<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script type="text/javascript">
+<![CDATA[
+
+(function() { // A few cross-browser fixes
+
+if (!document.parentWindow) document.parentWindow = window;
+
+//	document.documentURI for a range of browsers
+var _documentURI = document.documentURI || document.baseURI || document.URL || document.url || document.location;
+if (!document.documentURI) document.documentURI = _documentURI;
+
+// make visible window["[[DOMDocument]]"], etc in Safari-2
+document.createElement("select").options;
+document.createTextNode("text");
+document.createAttribute("attribute");
+
+var safari2Prototypes = {
+	Node: "[[DOMNode.prototype]]",
+	Text: "[[DOMText.prototype]]",
+	Document: "[[DOMDocument.prototype]]",
+	Element: "[[DOMElement.prototype]]",
+	Event: "[[DOMEvent.prototype]]"
+}
+
+for (var name in safari2Prototypes) {
+	var proto = safari2Prototypes[name];
+	if (!window[proto]) continue;
+	if (!window[name]) window[name] = function() {};
+	window[name].prototype = window[proto];
+}
+
+})();
+
+Meeko.stuff.domSystem = (function() {
+
+var domSystem = {};
+
+var interfaceTable = [
+//	{ name: "Node" },
+	{ name: "Window", nodeType: 0 }, // NOTE treated as a node for internal purposes
+	{ name: "Text", base: "Node", nodeType: 3 }, // Node.TEXT_NODE },
+	{ name: "Document", base: "Node", nodeType: 9 }, // Node.DOCUMENT_NODE },
+	{ name: "HTMLDocument", base: "Document", nodeType: 9 }, // Node.DOCUMENT_NODE },
+	{ name: "Element", base: "Node", nodeType: 1 }, // Node.ELEMENT_NODE },
+	{ name: "HTMLElement", base: "Element", nodeType: 1 }, // Node.ELEMENT_NODE },
+	{ name: "HTMLLinkElement", element: "link", base: "HTMLElement", nodeType: 1 }, // Node.ELEMENT_NODE },
+	{ name: "HTMLStyleElement", element: "style", base: "HTMLElement", nodeType: 1 }, // Node.ELEMENT_NODE },
+	{ name: "HTMLFormElement", element: "form", base: "HTMLElement", nodeType: 1 } // Node.ELEMENT_NODE }
+];
+
+var interfacesByName = {};
+Object.forEach (interfaceTable, function(row) {
+	interfacesByName[row.name] = row;
+})
+
+var interfaceInheritanceChains = {};
+for (var name in interfacesByName) {
+	interfaceInheritanceChains[name] = [];
+	var chain = interfaceInheritanceChains[name];
+	do {
+		chain.unshift(name);
+		var ifSpec = interfacesByName[name];
+		name = (ifSpec) ? ifSpec.base : null;
+	} while (name);
+}
+
+function getLocalName(element) {
+	return (element.localName) ? element.localName : element.tagName.replace(element.prefix+":", "");	
+}
+var htmlElementRulesTree = {
+	_test: function(node) { return getLocalName(node) },
+	"link": "HTMLLinkElement",
+	"style": "HTMLStyleElement",
+	"form": "HTMLFormElement",
+	"LINK": "HTMLLinkElement", // FIXME either change getLocalName() or generate upper-case rules
+	"STYLE": "HTMLStyleElement",
+	"FORM": "HTMLFormElement",
+	_default: "HTMLElement"
+}
+
+var interfaceRulesTree = {
+	_test: function(node) { return (node != window) ? node.nodeType : 0; },
+	0: "Window",
+	1: { // Node.ELEMENT_NODE
+		_test: function(node) { return node.namespaceURI },
+		"http://www.w3.org/1999/xhtml" : htmlElementRulesTree,
+		_null: htmlElementRulesTree,
+		_default: "Element"
+	},
+	9: { // Node.DOCUMENT_NODE
+		_test: function(node) { return node.namespaceURI },
+		"http://www.w3.org/1999/xhtml" : "HTMLDocument",
+		_null: "HTMLDocument",
+		_default: "Document"
+	}
+}
+
+var nodeTable = new Array(13);
+for (var i=0; i<13; i++) {
+	nodeTable[i] = [];
+}
+var nodeManager = {};
+nodeManager.getStorage = function(node) {
+	return node._domBindings;
+}
+nodeManager.addNode = function(node, callback, context) {
+	if (this.getStorage(node)) { // FIXME why?
+		// logger.debug("Failure in addNode(): node already being managed " + node.tagName);
+		return false;
+	}
+	var nodeType = (node != window) ? node.nodeType : 0;
+	var nodeList = nodeTable[nodeType];
+	nodeList.push(node);
+	var store = {};
+	node._domBindings = store;
+	if (callback) callback.call(context, node);
+	return true;
+}
+nodeManager.releaseNodesByType = function(type, callback, context) {
+	var nodeList = nodeTable[type];
+	for (var i=nodeList.length-1; i>=0; i--) {
+		var node = nodeList[i];
+		if (callback) callback.call(context, node);
+		delete nodeList[i];
+		var store = node._domBindings;
+		node._domBindings = null;
+	}
+}
+
+/*
+elementBinding = function() {}
+	prototype: {},
+	implementation: function() {},
+		prototype: {},
+	handlers: []
+*/
+
+
+var privateKey = Math.random();
+
+function bind(dest, source, fields, override) {
+	function _bind(dst, src, name, over) {
+		if (src[name] == null) return;
+		if (!over && (dst.hasOwnProperty && dst.hasOwnProperty(name) || dst[name] != null)) return;
+		if ("function" == typeof src[name]) dst[name] = function() { return src[name].apply(src, arguments); };
+		else if (dst.__defineGetter__) dst.__defineGetter__(name, function() { return src[name]; });
+		else dst[name] = src[name];
+	}
+	if (fields && fields.length) {
+		for (var n=fields.length, i=0; i<n; i++) {
+			var name = fields[i];
+			_bind(dest, source, name, override);
+		}
+	}
+	else {
+		for (var name in source) _bind(dest, source, name, override);
+	}
+	return dest;
+}
+
+function release(dest, source, fields) {
+	function _release(dst, src, name) {
+		if (dst[name] == null) return;
+		dst[name] = null;
+	}
+	if (fields && fields.length) {
+		for (var n=fields.length, i=0; i<n; i++) {
+			var name = fields[i];
+			_release(dest, source, name);
+		}
+	}
+	else {
+		for (var name in source) _release(dest, source, name);
+	}
+	return dest;
+}
+
+function hide(node, fields) {
+	for (var n=fields.length, i=0; i<n; i++) {
+		var name = fields[i];
+		var _name = "_" + name;
+		if (node[name]) {
+			node[_name] = node[name];
+			// delete node[name];
+			node[name] = null;
+		}
+	}
+}
+
+function restore(node, fields) {
+	for (var n=fields.length, i=0; i<n; i++) {
+		var name = fields[i];
+		var _name = "_" + name;
+		if (node[_name]) {
+			node[name] = node[_name];
+			// delete node[name];
+			node[_name] = null;
+		}
+	}
+}
+
+var incompleteBindings = []; // domBindings with xblReadyState() != "complete"
+
+/*
+ DOMBinding is a ClassFactory for dom-binding classes. Usage:
+   var HTMLElement = new DOMBinding("HTMLElement");
+ The DOMBinding class is then attached to a node with:
+   HTMLElement.attach(node);
+*/
+var DOMBinding = function(name) {
+	this.name = name;
+	this.prototype = {};
+	this.interfaces = [];
+	this.mergedInterfaces = [];
+	this.implementation = function(node) {};
+}
+DOMBinding.prototype.xblRequired = function(node) {
+	for (var n=this.interfaces.length, i=0; i<n; i++) {
+		var ifaceSpec = this.interfaces[i];
+		if (ifaceSpec.xblRequired && ifaceSpec.xblRequired(node)) return true;
+	}
+	if (this.baseBinding) return this.baseBinding.xblRequired(node);
+	else return false;
+}
+DOMBinding.prototype.attach = function(node) {
+	if (this.baseBinding) this.baseBinding.attach(node);
+	Object.copy(node, this.prototype); // TODO optimize
+	var internal = new this.implementation(node);
+	for (var n=this.mergedInterfaces.length, i=0; i<n; i++) {
+		var ifaceSpec = this.mergedInterfaces[i];
+		if (ifaceSpec.prototype.xblCreate) ifaceSpec.prototype.xblCreate.call(internal, node);
+	}
+	for (var n=this.interfaces.length, i=0; i<n; i++) {
+		var ifaceSpec = this.interfaces[i];
+		var iface = new ifaceSpec(node);
+		internal[i] = iface;
+		if (iface.xblReadyState && iface.xblReadyState() != "complete") incompleteBindings.push(iface);
+	}
+	var ifName = "_" + this.name;
+	nodeManager.getStorage(node)[ifName] = internal;
+}
+DOMBinding.prototype.detach = function(node) { // FIXME
+	var ifName = "_" + this.name;
+	var store = nodeManager.getStorage(node);
+	var internal = store[ifName];
+	// delete node[ifName]
+	store[ifName] = null;
+	if (!internal) {
+		logger.warn("Failure removing non-existant "+this.name+" interface from "+node.tagName);
+		return;
+	}
+	for (var n=this.interfaces.length, i=n-1; i>=0; i--) {
+		var iface = internal[i];
+		if (iface && iface.xblDestroy) iface.xblDestroy(node);
+		internal[i] = null;
+	}
+	// FIXME Object.uncopy(node, this.prototype);
+	for (var field in this.prototype) {
+		if (node[field] === this.prototype[field]) node[field] = null;
+	}
+	if (this.baseBinding) this.baseBinding.detach(node);
+}
+DOMBinding.prototype.addImplementation = function(impl) {
+	this.interfaces.push(impl);
+	var ifName = "_" + this.name;
+	var index = this.interfaces.length - 1;
+	return function(node) {
+		var store = nodeManager.getStorage(node);
+		if (!store) return;
+		var domBinding = store[ifName];
+		if (!domBinding) return;
+		return domBinding[index];
+	};
+}
+DOMBinding.prototype.mergeImplementation = function(impl) {
+	this.mergedInterfaces.push(impl);
+	var ifName = "_" + this.name;
+	return Function("node", "return node['"+ifName+"']; ");
+}
+DOMBinding.init = function(domBinding, interfaces, mergedInterfaces) {
+	for (var n=mergedInterfaces.length, i=0; i<n; i++) {
+		var iface = mergedInterfaces[i];
+		if (iface && iface.prototype) Object.copy(domBinding.implementation.prototype, iface.prototype);			
+	}
+}
+DOMBinding.prototype.init = function() {
+	DOMBinding.init(this, this.interfaces, this.mergedInterfaces);
+}
+
+var domBindings = {};
+for (var name in interfacesByName) {
+	var ifSpec = interfacesByName[name];
+	var domBinding = new DOMBinding(name);
+	domBindings[name] = domBinding;
+	if (!window[name]) window[name] = domBinding;
+	if (!window[name].prototype) window[name].prototype = domBinding.prototype;
+	
+	var baseName = ifSpec.base;
+	if (baseName) domBinding.baseBinding = domBindings[baseName];
+}
+
+// TODO tidy-up the DOMBinding utils into a class
+function lookupDOMBinding(node) {
+	var rule = interfaceRulesTree;
+	while ("string" != typeof rule) {
+		var rc = rule._test(node);
+		if (rc != null) rule = rule[rc] || rule._default || "";
+		else rule = rule._null || "";
+	}
+	return domBindings[rule];
+}
+var filterDOMBindings = {
+	acceptNode: function(node) {
+		var domBinding = lookupDOMBinding(node);
+		if (!domBinding) {
+			logger.warn("filterDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
+			return NodeFilter.FILTER_REJECT;
+		}
+		return (domBinding.xblRequired(node)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+	}
+}
+function attachDOMBindings(node) {
+	var domBinding = lookupDOMBinding(node);
+	if (!domBinding) {
+		logger.error("attachDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
+		throw "Error attaching DOMBindings";
+	}
+	if (nodeManager.addNode(node)) domBinding.attach(node); // FIXME assumes that if addNode fails then bindings are already attached
+}
+function detachDOMBindings(node) { // MUST be called with nodeManager.releaseNodesByType(nodeType, detachDOMBindings)
+	var domBinding = lookupDOMBinding(node);
+	if (!domBinding) {
+		logger.error("detachDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
+		throw "Error detaching DOMBindings";
+	}
+	domBinding.detach(node);
+}
+
+function detachDOMBindingsByNodeType(nodeType) {
+	nodeManager.releaseNodesByType(nodeType, detachDOMBindings);
+}
+
+var timerId = null,
+	readyState = "uninitialized",
+	_initializing = false,
+	domWalker = null;
+
+function init() {
+	if (null == document.readyState) { // Mozilla
+		document.readyState = "loading";	
+		document.addEventListener("DOMContentLoaded", function(event) { document.readyState = "loaded"; }, true);
+		window.addEventListener("load", function(event) { if (event.target == document || event.target == window) document.readyState = "complete"; }, true);
+	}
+	
+	if (window.addEventListener) window.addEventListener("unload", exit, true);
+	if (window.attachEvent) window.attachEvent("onunload", exit);	
+
+	timerId = window.setTimeout(onprogress, 50);
+}
+
+function exit() { // FIXME
+logger.debug("Beginning exit process");
+	detachDOMBindingsByNodeType(Node.ELEMENT_NODE);
+	detachDOMBindingsByNodeType(Node.DOCUMENT_NODE);
+	detachDOMBindingsByNodeType(0); // Window
+
+logger.debug("DOMBindings detached");
+
+	if (window.removeEventListener) window.removeEventListener("unload", exit, false);
+	if (window.detachEvent) window.detachEvent("onunload", exit);
+logger.debug("Finished exit process");
+}
+
+function onprogress() {
+	if (_initializing) { // NOTE re-entrancy usually means a crash in the initialization
+		;;;logger.debug("Re-entrancy during initialization");
+		return false; 
+	}
+	_initializing = true;
+	_init();
+	_initializing = false;
+}
+
+
+function _init() {
+	timerId = window.setTimeout(onprogress, 50);
+	MAIN: switch (readyState) { // NOTE all these branches can fall-thru when they result in a state transition
+		case "uninitialized":
+;;;logger.debug("initializing");
+			if (!document.body) return false;
+			for (var name in domBindings) {
+				domBindings[name].init();
+			}
+			attachDOMBindings(window); // force attach
+			attachDOMBindings(document); // force attach
+			window.addEventListener("DOMNodeInserted", function(event) {
+				if (event.target.nodeType == 1) { // Node.ELEMENT_NODE) {
+logger.debug("DOMNodeInserted");
+					var localWalker = document._createTreeWalker(event.target, NodeFilter.SHOW_ELEMENT, filterDOMBindings, false);
+					localWalker.forEach(attachDOMBindings); // FIXME some elements will already have bindings applied
+				}
+			}, true);
+			domWalker = document._createTreeWalker(document.documentElement, NodeFilter.SHOW_ELEMENT, filterDOMBindings, false);
+			readyState = "loading";
+		case "loading":
+;;;logger.debug("loading");
+			domWalker.forEach(attachDOMBindings);
+			// FIXME if document.readyState is updated while this thread is running then there could be a failure here.
+			switch (document.readyState) {
+				case "loaded": case "interactive": case "complete":
+					logger.debug("Dispatching compat DOMContentLoaded event");
+					var event = document.createEvent("Event");
+					event.initEvent("DOMContentLoaded", true, true);
+					document.dispatchEvent(event);
+					readyState = "loaded";
+					break;
+				default: break MAIN;
+			}
+		case "loaded":
+;;;logger.debug("loaded");
+			for (var i=incompleteBindings.length-1; i>=0; i--) {
+				if ("complete" == incompleteBindings[i].xblReadyState()) incompleteBindings.splice(i,1);
+			}
+			if (incompleteBindings.length) break MAIN;
+			readyState = "complete";
+;;;logger.debug("complete");
+	}
+	
+	// NOTE it is an error if we don't get to this point
+	logger.debug("Dispatching compat progress event");
+	var event = document.createEvent("Event");
+	event.initEvent("progress", true, true);
+	document.dispatchEvent(event);
+	if (readyState == "complete") {
+		logger.debug("Dispatching compat load event");
+		var event = document.createEvent("Event");
+		event.initEvent("load", true, true);
+		document.dispatchEvent(event);
+		window.clearTimeout(timerId);
+	}
+}
+
+function wrap(dest, fields) {
+	for (var n=fields.length, i=0; i<n; i++) {
+		var name = fields[i];
+		var _name = "_" + name;
+		dest[_name] = dest[name];
+		dest[name] = function() {
+			var node = this[_name]();
+			domSystem.attach(node);
+			return node;
+		}
+	}
+}
+
+
+init();
+
+Object.copy(domSystem, { // FIXME this is a complete hack
+	addImplementation: function(name, impl) { return domBindings[name].addImplementation(impl); },
+	mergeImplementation: function(name, impl) { return domBindings[name].mergeImplementation(impl); },
+	bindInterface: bind,
+	releaseInterface: release,
+	hideInterface: hide,
+	restoreInterface: restore,
+	wrapInterface: wrap,
+	attach: attachDOMBindings,
+	initialize: function() {},
+	document: {} // FIXME implement this
+});
+
+var Traversal = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+Traversal.getInterface = domSystem.addImplementation("Document", Traversal);
+Traversal.methods = ["createTreeWalker", "createNodeIterator"];
+Traversal.prototype.xblCreate = function(target) {
+	this.target = target;
+	var xblPublic = Traversal.methods;
+	domSystem.hideInterface(target, xblPublic);
+	domSystem.bindInterface(target, this, xblPublic, true); // NOTE override on W3C systems
+}
+Traversal.prototype.xblDestroy = function(target) {
+	this.target = null;
+	var xblPublic = Traversal.methods;
+	domSystem.releaseInterface(target, this, xblPublic, true);
+	domSystem.restoreInterface(target, xblPublic);
+}
+Traversal._createInterface = function(fields) {
+	var iface = function() {};
+	for (var n=fields.length, i=0; i<n; i++) {
+		var name = fields[i];
+		iface.prototype[name] = new Function('var node = this.baseBinding["' + name + '"](); if (node) { this.currentNode = node; Meeko.stuff.domSystem.attach(node); } return node;');
+	}
+	return iface;
+}
+
+Traversal.TreeWalker = Traversal._createInterface(["firstChild", "lastChild", "parentNode", "nextSibling", "previousSibling", "nextNode", "previousNode"]);
+Traversal.TreeWalker.prototype.forEach = function(callback, context) { return this.baseBinding.forEach.call(this, callback, context); }
+Traversal.NodeIterator = Traversal._createInterface(["nextNode", "previousNode"]);
+Traversal.NodeIterator.prototype.forEach = function(callback, context) { return this.baseBinding.forEach.call(this, callback, context); }
+
+Traversal.prototype.createTreeWalker = function(root, whatToShow, filter, entityReferenceExpansion) {
+	var _filter = {};
+	_filter.baseBinding = filter;
+	_filter.acceptNode = function(node) {
+		var lastDocumentNode = domWalker.currentNode;
+		if (lastDocumentNode === node || lastDocumentNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) {
+			if (this.baseBinding) return this.baseBinding.acceptNode(node);
+			else return NodeFilter.FILTER_ACCEPT;
+		}
+		else return NodeFilter.FILTER_REJECT;
+	}
+	var iter = new Traversal.TreeWalker();
+	iter.baseBinding = document._createTreeWalker(root, whatToShow, _filter, entityReferenceExpansion);
+	return iter;
+}
+Traversal.prototype.createNodeIterator = function(root, whatToShow, filter, entityReferenceExpansion) {
+	var _filter = {};
+	_filter.baseBinding = filter;
+	_filter.acceptNode = function(node) {
+		var lastDocumentNode = domWalker.currentNode;
+		var cmp = (lastDocumentNode.compareDocumentPosition) ?
+			lastDocumentNode.compareDocumentPosition(node) :
+			Element.prototype.compareDocumentPosition.call(lastDocumentNode, node);
+		if (lastDocumentNode === node || cmp & Node.DOCUMENT_POSITION_PRECEDING) {
+			if (this.baseBinding) return this.baseBinding.acceptNode(node);
+			else return NodeFilter.FILTER_ACCEPT;
+		}
+		else return NodeFilter.FILTER_REJECT;
+	}
+	var iter = new Traversal.NodeIterator();
+	iter.baseBinding = document._createNodeIterator(root, whatToShow, _filter, entityReferenceExpansion);
+	return iter;
+}
+
+
+var NodeList = function(target) {
+	if (!(this instanceof arguments.callee)) return new arguments.callee(target);
+
+	if (!(target && target.item && target.length != null)) throw "Target does not have NodeList interface"; 
+	this.target = target;
+	this.length = {
+		target: target,
+		valueOf: function() { return this.target.length; }
+	};
+}
+NodeList.prototype.item = function(i) {
+	var target = this.target;
+	var node = target.item(i);
+	if (node) Meeko.stuff.domSystem.attach(node);
+	return node;
+}
+NodeList.prototype.forEach = function(fn, context) {
+	var target = this.target;
+	for (var n=target.length, i=0; i<n; i++) {
+		var node = target.item(i);
+		if (node) Meeko.stuff.domSystem.attach(node);
+		fn.call(context, node, i);
+	}
+}
+
+// FIXME
+if (window.NodeList) window._NodeList = window.NodeList;
+window.NodeList = NodeList; 
+
+return domSystem;
+
+})();
+
+
+]]>
+</script>
+</head>
+</html>

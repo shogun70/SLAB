@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Console</title>
+<style type="text/css">
+* {
+	font: message-box;
+}
+
+html, body {
+	background-color: #dddddd;
+	color: #000000;
+	width: 100%; height: 100%;
+	top: 0; bottom: 0; left: 0; right: 0;
+	margin: 0; padding: 0; border: 0;
+	overflow: hidden;
+}
+#toolbar, #titlebar, #consoleBar, #viewPortC {
+	display: block;
+	width: 100%;
+	left: 0; right: 0;
+	margin: 0; padding: 0.5em;
+	border-left: none;
+	border-right: none;
+	border-bottom: 1px solid #999999;
+	border-top: 1px solid #f7f7f7;
+}
+#titlebar { border-bottom: none; }
+#toolbar { border-top: none; }
+#titlebar label { font-size: large; font-weight: bold; }
+
+#url { width: 40em; }
+
+#viewPortC {
+	width: 100%;
+	margin: 0; padding: 0;
+}
+#consoleBox {
+	position: absolute;
+	display: block;
+	width: 100%;
+	bottom: 0;
+	height: 15em;
+	overflow: scroll;
+}
+#console {
+	table-layout: fixed;
+	border-collapse: collapse;
+	vertical-align: top;
+	background-color: #ffffff;
+	width: 100%;
+}
+#consoleBox.closed { display: none; }
+#console td { border: 1px solid #d0d0d0; }
+#console tbody tr.DEBUG td:first-child { color: green; }
+#console tbody tr.INFO td:first-child { color: blue; }
+#console tbody tr.WARN td:first-child { color: orange; }
+#console tbody tr.ERROR td:first-child { color: red; }
+#consoleBar label { font-weight: bold; }
+#consoleBar button.hidden { display: none; }
+</style>
+<script type="text/javascript">
+<![CDATA[
+var Meeko = {}; Meeko.stuff = {};
+Meeko.stuff.trace = {};
+Meeko.stuff.trace.log = function(data) {
+	var rows = document.getElementById("console").getElementsByTagName("tbody")[0];
+	var frag = document.createElement("tr");
+	function createCell(txt, title) {
+		var td = document.createElement("td");
+		td.appendChild(document.createTextNode((txt!=null)?txt:" "));
+		td.setAttribute("title", title);
+		return td;
+	}
+	var level = (["DEBUG", "INFO", "WARN", "ERROR"])[data.level];
+	function filename(url) {
+		var a = url.split('/');
+		return "" + ((a.length > 1) ? ".../" : "") + a[a.length-1];
+	}
+	frag.appendChild(createCell(level));
+	frag.appendChild(createCell(data.message));
+	frag.appendChild(createCell(filename(data.url), data.url));
+	frag.appendChild(createCell(filename(data.ref), data.ref));
+	frag.appendChild(createCell((new Date).getTime()));
+	frag.className = level;
+	var rc = rows.appendChild(frag);
+}
+
+var Box = function(element) {
+	this.boundElement = element;
+};
+Box.prototype.reflow = function() {
+	var element = this.boundElement;
+	var height = element.offsetHeight;
+	var resizingElts = [];
+	var staticHeight = 0;
+	var nodes = element.childNodes;
+	for (var i=0, n=nodes.length; i<n; i++) {
+		var node = nodes[i];
+		if (1 != node.nodeType) continue;
+		if ("IFRAME" == node.tagName) resizingElts.push(node);
+		else staticHeight += node.offsetHeight;
+	}
+	if (resizingElts.length < 1) return;
+	var dynamicHeight = Math.floor((height - staticHeight) / resizingElts.length);
+	for (var i=0, n=resizingElts.length; i<n; i++) {
+		var frame = resizingElts[i];
+		var szHeight = "" + dynamicHeight + "px";
+		frame.style.height = szHeight;
+	}
+}
+
+var bodyBox;
+
+window.onload = function() {
+	bodyBox = new Box(document.body);
+	bodyBox.reflow();
+}
+
+/*
+window.onresize = function() {
+	bodyBox.reflow();
+}
+*/
+
+]]>
+</script>
+</head>
+<body>
+	<div id="titlebar">
+		<label>Meeko Console</label>
+	</div>
+	<form id="toolbar" onsubmit="document.getElementById('viewPortC').src = document.getElementById('url').value; return false;">
+		<label for="url">Address <input type="text" name="url" id="url" /></label>
+		<button type="submit">Go</button>
+	</form>
+	<iframe name="viewPortC" id="viewPortC" />
+	<div id="consoleBar">
+		<label>Console</label>
+		<button id="console_show" type="button" class="hidden" onclick="this.className = 'hidden'; document.getElementById('console_hide').className = ''; document.getElementById('consoleBox').className='open'; bodyBox.reflow(); return false;">Show</button>
+		<button id="console_hide" type="button" onclick="this.className = 'hidden'; document.getElementById('console_show').className = ''; document.getElementById('consoleBox').className='closed'; bodyBox.reflow(); return false;">Hide</button>
+	</div>
+	<div id="consoleBox" class="open">
+		<table id="console">
+			<colgroup span="5"><col style="width: 5em;" /><col /><col style="width: 10em;" /><col style="width: 10em;" /><col style="width: 10em;" /></colgroup>
+			<tbody>
+			</tbody>
+		</table>
+ </div>
+</body>
+</html>

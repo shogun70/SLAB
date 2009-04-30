@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<?xpl-require href="../DOM/System.xhtml"?>
+<html>
+<head>
+<script>
+<![CDATA[
+
+Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.HTML");
+Meeko.DOM.HTML = (function() {
+
+// make abbr and output parse on Internet Explorer
+document.createElement("abbr");
+document.createElement("output");
+
+var HTMLCollection = function() {}
+var HTMLOptionsCollection = function() {}
+var HTMLDocument = function() {};
+var HTMLElement = function() {}
+
+if (document.documentElement.classList == null) {{
+
+var HTML5Element = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return null;
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+HTML5Element.prototype.xblCreate = function(target) {
+	this.boundElement = target;
+	this.getClassName = function() { return this.boundElement.className; };
+	this.setClassName = function(val) { this.boundElement.className = val; };
+	var binding = this;
+	this.classList = new DOMTokenList(function() { return binding.getClassName(); }, function(val) { binding.setClassName(val); });
+	Meeko.stuff.domSystem.bindInterface(target, this, ["classList"]);
+}
+HTML5Element.prototype.xblDestroy = function(target) {
+	// FIXME Meeko.stuff.domSystem.unbindInterface()
+	this.boundElement.classList = null;
+	this.classList.xblDestroy(); // FIXME is this necessary
+	this.boundElement = null;
+}
+
+Meeko.stuff.domSystem.addImplementation("HTMLElement", HTML5Element);
+}}
+
+
+return {
+	HTMLCollection: HTMLCollection,
+	HTMLOptionsCollection: HTMLOptionsCollection,
+	HTMLDocument: HTMLDocument,
+	HTMLElement: HTMLElement
+};
+
+})();
+
+//Meeko.XPL.Namespace.enhance(window, Meeko.DOM.HTML);
+
+
+]]>
+</script>
+</head>
+</html>

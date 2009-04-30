@@ -1,0 +1,73 @@
+<?xml version="1.0"?>
+<?xpl-require href="lib/Meeko/Net.xhtml"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script type="text/javascript">
+<![CDATA[
+
+Meeko.XML.HttpRequest.hosts['dist.meekostuff.net'] = (function() { // FIXME host shouldn't be hard-wired
+
+var HostRequest = function(host) {
+	this.readyState = 0;
+	this.host = host;
+};
+
+
+HostRequest.prototype.open = function(method, path, async) {
+	if (!(method == "get" || method == "GET")) throw "HttpRequest is only valid for GET method!";
+	if (!async) throw "HttpRequest must be asynchronous!";
+	this._method = method;
+	this._path = path;
+	this.readyState = 1;
+	if (this.onreadystatechange) this.onreadystatechange({ type: "readystatechange" });
+}
+
+HostRequest.prototype.send = function(data) {
+	var rq = this;
+	setTimeout(function() { rq._send(data); }, 10);
+}
+
+HostRequest.prototype._send = function(data) {
+	var head = document.documentElement.getElementsByTagName("head")[0];
+	var script = document.createElement("script");
+	script.type = "text/javascript";
+	script.src = "http://" + this.host + this._path + ".js";
+	script._httpRequest = this;
+	head.insertBefore(script, head.firstChild);
+}
+
+HostRequest.prototype._callback = function(result) {
+	this._request = result._request;
+	this._response = result._response;
+	this.status = result._response.status;
+	this.statusText = result._response.statusText;
+	this.responseText = new String(result._response.content);
+	this.readyState = 4;
+	if (this.onreadystatechange) this.onreadystatechange({ type: "readystagechange" });
+}
+
+HostRequest.callback = function(result) {
+	var src = "http://" + result._request.Host + result._request.URL;
+	var head = document.documentElement.getElementsByTagName("head")[0];
+	var script;
+	for (var node=head.firstChild; node; node=node.nextSibling) {
+		if ("SCRIPT" != node.tagName) continue;
+		if (node.src != src) continue;
+		script = node;
+		break;
+	}
+	if (!script) throw "HostRequest callback without matching call";
+	head.removeChild(script);
+	var rq = script._httpRequest;
+	script._httpRequest = null;
+	rq._callback(result);
+}
+
+return HostRequest;
+
+})();
+
+]]>
+</script>
+</head>
+</html>
