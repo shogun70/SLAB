@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<?xpl-require href="../ECMAScript5.xhtml"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <script type="text/javascript">
@@ -346,7 +346,6 @@ function detachDOMBindingsByNodeType(nodeType) {
 
 var timerId = null,
 	readyState = "uninitialized",
-	_initializing = false,
 	domWalker = null;
 
 function init() {
@@ -359,7 +358,7 @@ function init() {
 	if (window.addEventListener) window.addEventListener("unload", exit, true);
 	if (window.attachEvent) window.attachEvent("onunload", exit);	
 
-	timerId = window.setTimeout(onprogress, 50);
+	onprogress();
 }
 
 function exit() { // FIXME
@@ -376,22 +375,38 @@ logger.debug("Finished exit process");
 }
 
 function onprogress() {
-	if (_initializing) { // NOTE re-entrancy usually means a crash in the initialization
-		;;;logger.debug("Re-entrancy during initialization");
-		return false; 
-	}
-	_initializing = true;
-	_init();
-	_initializing = false;
+	if (readyState == "uninitialized" && document.body || readyState != "uninitialized") _init();
+	if (readyState != "complete") timerId = window.setTimeout(onprogress, 50);
 }
 
-
+var _initializing = false; // guard against re-entrancy
 function _init() {
-	timerId = window.setTimeout(onprogress, 50);
+	if (_initializing) {
+		logger.warn("Reentrancy in domSystem initialization.");
+		return;
+	}
+	if (readyState == "complete") {
+		logger.warn("domSystem initialization requested after complete");
+		return;
+	}
+	_initializing = true;
+	try { __init(); }
+	catch(error) { alert(error); }
+	_initializing = false;	
+}
+
+function manualInit() {
+	if (readyState != "uninitialized") {
+		logger.warn("Manual domSystem initialization requested after automatic start");
+		return;		
+	}
+	_init();
+}
+
+function __init() {
 	MAIN: switch (readyState) { // NOTE all these branches can fall-thru when they result in a state transition
 		case "uninitialized":
 ;;;logger.debug("initializing");
-			if (!document.body) return false;
 			for (var name in domBindings) {
 				domBindings[name].init();
 			}
@@ -440,7 +455,6 @@ logger.debug("DOMNodeInserted");
 		var event = document.createEvent("Event");
 		event.initEvent("load", true, true);
 		document.dispatchEvent(event);
-		window.clearTimeout(timerId);
 	}
 }
 
@@ -469,7 +483,7 @@ Object.copy(domSystem, { // FIXME this is a complete hack
 	restoreInterface: restore,
 	wrapInterface: wrap,
 	attach: attachDOMBindings,
-	initialize: function() {},
+	initialize: manualInit,
 	document: {} // FIXME implement this
 });
 
