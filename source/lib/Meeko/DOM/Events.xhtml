@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<?xpl-require href="../Javascript-1.6/Javascript.xhtml"?>
+<?xpl-require href="../ECMAScript5.xhtml"?>
 <?xpl-require href="../DOM/System.xhtml"?>
 <?xpl-require href="../DOM/Core.xhtml"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
@@ -763,6 +763,13 @@ EventTarget.prototype.xblCreate = function(target) {
 		event.target = null;
 	}
 	this.prevValues = {}; // for onattrmodified
+	var atts = this.target.attributes;
+	for (var n=atts.length, i=0; i<n; i++) {
+		var att = atts[i];
+		if (att.specified) this.prevValues[att.nodeName] = att.nodeValue;
+	}
+/*
+	// this approach is quicker, but crashes the browser on document.documentElement
 	var clone = this.target.cloneNode(false);
 	var text = clone.outerHTML.replace(/^\S+/, "");
 	var rex = /\s+([-_a-zA-Z0-9]+)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))(\>)?/g;
@@ -774,6 +781,7 @@ EventTarget.prototype.xblCreate = function(target) {
 		this.prevValues[attrName] = val;
 		if (">" == m[5]) break; 
 	}
+*/
 }
 
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
