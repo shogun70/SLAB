@@ -13,6 +13,41 @@ var _global = this;
 var Object = function() {}
 Object.prototype = new _global.Object();
 
+var __defineProperty__ = function(object, field, desc) {
+	if ((desc.get || desc.set) && desc.value != null) throw "value is incompatible with get, set";
+	if (desc.value != null) {
+		if (delete object[field] && object[field] == null) object[field] = desc.value; 
+		else object.__defineGetter__(field, function() { return desc.value; });
+	}
+	if (desc.get) object.__defineGetter__(field, desc.get);
+	if (desc.set) object.__defineSetter__(field, desc.set);
+	return object;
+}
+var defineProperty = function(object, field, desc) { 
+	if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
+	var value = (desc.get) ? {
+			valueOf: desc.get.bind(object),
+			toString: desc.get.bind(object)
+		} : desc.value;
+	try {
+		if (desc.value) object[field] = desc.value;
+		if (desc.get) object[field] = {
+			valueOf: desc.get.bind(object),
+			toString: desc.get.bind(object)
+		}
+		if (desc.set) throw "setters not implemented";
+	}
+	catch (error) {
+		if (object.nodeType != 1) throw "Object.defineProperty not valid for non-Element nodes";
+		var attr = document.createAttribute(field);
+		attr.nodeValue = value;
+		object.setAttributeNode(attr);
+	}
+	return object;
+}
+Object.defineProperty = (_global.Object.prototype.__defineGetter__) ? __defineProperty__ : defineProperty;
+
+	
 // NOTE non-standard Object methods
 Object.copy = function(dest, source, fields, override) {
 	function _copy(dst, src, name, over) {
