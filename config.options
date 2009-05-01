@@ -3,7 +3,7 @@
 # Variables are expanded as they are read
 
 PKGNAME = SLAB
-PKGVERSION = 0.5
+PKGVERSION = 0.6
 basedir = http://localhost
 destdir = /Library/Webserver/Documents
 prefix = dist/
