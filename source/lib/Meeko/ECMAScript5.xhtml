@@ -25,6 +25,7 @@ var __defineProperty__ = function(object, field, desc) {
 }
 var defineProperty = function(object, field, desc) { 
 	if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
+	if (desc.set) throw "setters not implemented";
 	var value = (desc.get) ? {
 			valueOf: desc.get.bind(object),
 			toString: desc.get.bind(object)
@@ -35,7 +36,6 @@ var defineProperty = function(object, field, desc) {
 			valueOf: desc.get.bind(object),
 			toString: desc.get.bind(object)
 		}
-		if (desc.set) throw "setters not implemented";
 	}
 	catch (error) {
 		if (object.nodeType != 1) throw "Object.defineProperty not valid for non-Element nodes";
@@ -207,8 +207,10 @@ Function.prototype = new _global.Function;
 
 Function.prototype.bind = function(target) {
 	if (arguments.length > 1) throw "This implementation of Function.prototype.bind() does not support arguments other than the bound target."
-	var callee = this;
-	return function() { return callee.apply(target, arguments); }
+	var boundMethod = function() { return arguments.callee.__call__.apply(arguments.callee.__target__, arguments); }
+	boundMethod.__target__ = target;
+	boundMethod.__call__ = this;
+	return boundMethod;
 }
 
 return {
