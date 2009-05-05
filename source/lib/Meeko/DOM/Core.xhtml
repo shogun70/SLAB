@@ -104,47 +104,63 @@ var DOMTokenList = function(getter, setter) { // TODO parameter checking
 	this._setText = setter;
 	this.valueOf = getter;
 	this.toString = getter;
-	this.length = {
-		internal: this,
-		valueOf: function() { return this.internal._getTokens().length },
-		toString: function() { return String(this.valueOf()); }
-	};
+	Object.defineProperty(this, "length", {
+		"get": function() { return this._getTokens().length; }
+	})
 };
 DOMTokenList.prototype.xblDestroy = function() { // FIXME is this needed??
 	this.valueOf = null;
 	this.toString = null;
 	this._getText = null;
 	this._setText = null;
-	this.length.internal = null;
-	this.length.valueOf = null;
-	this.length.toString = null;
 	this.length = null;
 }
 DOMTokenList.prototype.item = function(index) {
-	return this._getTokens()[index];		
+	return this._getTokens()[index];
 }
 DOMTokenList.prototype.has = function(token) {
-	return (-1 != Array.indexOf(this._getTokens(), token));
+	var rex = /^\s*(\w+)\b/;
+	var tmp = this._getText();
+	var found = false;
+	while (/\w/.test(tmp)) {
+		tmp = tmp.replace(rex, function($0, $1) { if ($1 == token) found = true; return ""; });
+		if (found) return true;
+	}
+	return false;
 }
 DOMTokenList.prototype.add = function(token) {
-	var tokens = this._getTokens();
-	if (!this.has(token)) {
-		var text = this._getText().replace(/\s*$/, " " + token);
-		this._setText(text);
-	}
+	if (this.has(token)) return;
+	var text = this._getText();
+	if (/^\s*$/.test(text)) text = "" + token;
+	else text = text.replace(/\s*$/, " " + token);
+	this._setText(text);
 }
 DOMTokenList.prototype.remove = function(token) {
-	if (this.has(token)) {
-		var rex, text = this._getText();
-		rex = RegExp("\\s+"+token+"\\s+", "g");
-		text = text.replace(rex, " ");
-		rex = RegExp("^\\s*"+token+"\\s+");
-		text = text.replace(rex, "");
-		rex = RegExp("\\s+"+token+"\\s*$");
-		text = text.replace(rex, "");
-		if (text == token) text = "";
-		this._setText(text);
-	}		
+	var text = this._getText(), tmp = text, final = "";
+	var rex = /^(\s*)(\w+)\b(\s*)/;
+	var i = 0;
+	while (1) { // loop forever
+		var m = tmp.match(rex);
+		if (m[0] == tmp) { // at end
+			if (m[2] != token) {
+				i++;
+				final += m[0];
+			}
+			tmp = "";
+			break;
+		}
+		if (m[2] == token) {
+			var offset = m[0].length - (i ? 1 : 0);
+			tmp = tmp.substring(offset);
+		}
+		else {
+			i++;
+			final += m[1] + m[2];
+			tmp = tmp.substring(m[1].length + m[2].length);
+		}
+	}
+	if (final == text) return;
+	this._setText(final);
 }
 DOMTokenList.prototype.toggle = function(token) {
 	if (this.has(token)) this.remove(token);
