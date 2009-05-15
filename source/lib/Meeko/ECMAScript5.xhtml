@@ -13,7 +13,7 @@ var _global = this;
 var Object = function() {}
 Object.prototype = new _global.Object();
 
-var __defineProperty__ = function(object, field, desc) {
+var legacy_defineProperty = function(object, field, desc) { // this is a shim for legacy getters, setters
 	if ((desc.get || desc.set) && desc.value != null) throw "value is incompatible with get, set";
 	if (desc.value != null) {
 		if (delete object[field] && object[field] == null) object[field] = desc.value; 
@@ -23,20 +23,14 @@ var __defineProperty__ = function(object, field, desc) {
 	if (desc.set) object.__defineSetter__(field, desc.set);
 	return object;
 }
-var defineProperty = function(object, field, desc) { 
+var ie6_defineProperty = function(object, field, desc) { 
 	if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
 	if (desc.set) throw "setters not implemented";
 	var value = (desc.get) ? {
 			valueOf: desc.get.bind(object),
 			toString: desc.get.bind(object)
 		} : desc.value;
-	try {
-		if (desc.value) object[field] = desc.value;
-		if (desc.get) object[field] = {
-			valueOf: desc.get.bind(object),
-			toString: desc.get.bind(object)
-		}
-	}
+	try { object[field] = value; }
 	catch (error) {
 		if (object.nodeType != 1) throw "Object.defineProperty not valid for non-Element nodes";
 		var attr = document.createAttribute(field);
@@ -45,7 +39,35 @@ var defineProperty = function(object, field, desc) {
 	}
 	return object;
 }
-Object.defineProperty = (_global.Object.prototype.__defineGetter__) ? __defineProperty__ : defineProperty;
+var ie8_defineProperty = function(object, field, desc) { // FIXME refactor common code with ie6_defineProperty
+	try {
+		if (desc.value != null && object[field] != null) { // NOTE use getters to override native properties in IE8
+			var getter = function() { return arguments.callee.__value__; }
+			getter.__value__ = desc.value;
+			_global.Object._defineProperty(object, field, { get: getter });
+		}
+		else _global.Object._defineProperty(object, field, desc);
+	}
+	catch (error) {
+		if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
+		if (desc.set) throw "setters not implemented";
+		var value = (desc.get) ? {
+				valueOf: desc.get.bind(object),
+				toString: desc.get.bind(object)
+			} : desc.value;
+		object[field] = value;
+	}
+	return object;
+}
+if (_global.Object.defineProperty) {
+	try { _global.Object.defineProperty({}, "_x", { get: function() {}}); }
+	catch (error) {
+		_global.Object._defineProperty = _global.Object.defineProperty;
+		_global.Object.defineProperty = null; // so our method gets added to global Object
+		Object.defineProperty = ie8_defineProperty;
+	}	
+}
+else Object.defineProperty = (_global.Object.prototype.__defineGetter__) ? legacy_defineProperty :	ie6_defineProperty;
 
 	
 // NOTE non-standard Object methods
