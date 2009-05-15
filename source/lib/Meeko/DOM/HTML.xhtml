@@ -15,8 +15,16 @@ document.createElement("output");
 
 var HTMLCollection = function() {}
 var HTMLOptionsCollection = function() {}
-var HTMLDocument = function() {};
+var HTMLFormControlsCollection = function() {}
+var HTMLDocument = function() {}
 var HTMLElement = function() {}
+var HTMLFormElement = function() {}
+var HTMLSelectElement = function() {}
+var HTMLInputElement = function() {}
+var HTMLTableElement = function() {}
+var HTMLTableSectionElement = function() {}
+var HTMLTableRowElement = function() {}
+
 
 if (document.documentElement.classList == null) {{
 
@@ -45,8 +53,15 @@ Meeko.stuff.domSystem.addImplementation("HTMLElement", HTML5Element);
 return {
 	HTMLCollection: HTMLCollection,
 	HTMLOptionsCollection: HTMLOptionsCollection,
+	HTMLFormControlsCollection: HTMLFormControlsCollection,
 	HTMLDocument: HTMLDocument,
-	HTMLElement: HTMLElement
+	HTMLElement: HTMLElement,
+	HTMLFormElement: HTMLFormElement,
+	HTMLSelectElement: HTMLSelectElement,
+	HTMLInputElement: HTMLInputElement,
+	HTMLTableElement: HTMLTableElement,
+	HTMLTableSectionElement: HTMLTableSectionElement,
+	HTMLTableRowElement: HTMLTableRowElement
 };
 
 })();
