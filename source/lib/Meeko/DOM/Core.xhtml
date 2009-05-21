@@ -61,9 +61,6 @@ Document.prototype.importNode = function(node, bDeep) {
 
 var Element = function() {}
 
-
-var DOMException = function() {};
-
 if (!document.documentElement.compareDocumentPosition && document.documentElement.contains) {
 
 Element.prototype.compareDocumentPosition = function(node) {
@@ -79,6 +76,7 @@ Element.prototype.compareDocumentPosition = function(node) {
 
 }
 
+var DOMException = function() {};
 
 DOMException.INDEX_SIZE_ERR = 1;
 DOMException.DOMSTRING_SIZE_ERR = 2;
@@ -177,13 +175,16 @@ DOMTokenList.prototype._getTokens = function() {
 	return sorted;		
 }
 
+var NodeList = function() {}
+
 return {
 	Node: Node,
 	Text: Text,
 	Document: Document,
 	Element: Element,
 	DOMException: DOMException,
-	DOMTokenList: DOMTokenList
+	DOMTokenList: DOMTokenList,
+	NodeList: NodeList
 };
 
 })();

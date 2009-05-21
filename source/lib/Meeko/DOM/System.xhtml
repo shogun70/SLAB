@@ -114,7 +114,7 @@ for (var i=0; i<13; i++) {
 }
 var nodeManager = {};
 nodeManager.getStorage = function(node) {
-	return node._domBindings;
+	return node.slabID;
 }
 nodeManager.addNode = function(node, callback, context) {
 	if (this.getStorage(node)) { // FIXME why?
@@ -123,9 +123,15 @@ nodeManager.addNode = function(node, callback, context) {
 	}
 	var nodeType = (node != window) ? node.nodeType : 0;
 	var nodeList = nodeTable[nodeType];
+	var index = nodeList.length;
 	nodeList.push(node);
-	var store = {};
-	node._domBindings = store;
+	var slabID = "slab__" + nodeType + "_" + index;
+	var store = {
+		__id__ : slabID,
+		valueOf: function() { return this.__id__ },
+		toString: function() { return this.__id__ }
+	};
+	node.slabID = store;
 	if (callback) callback.call(context, node);
 	return true;
 }
@@ -135,8 +141,8 @@ nodeManager.releaseNodesByType = function(type, callback, context) {
 		var node = nodeList[i];
 		if (callback) callback.call(context, node);
 		delete nodeList[i];
-		var store = node._domBindings;
-		node._domBindings = null;
+		var store = node.slabID;
+		node.slabID = null;
 	}
 }
 
@@ -281,16 +287,15 @@ DOMBinding.prototype.addImplementation = function(impl) {
 	};
 }
 
-var domBindings = {};
 for (var name in interfacesByName) {
 	var ifSpec = interfacesByName[name];
 	var domBinding = new DOMBinding(name);
-	domBindings[name] = domBinding;
+	domSystem[name] = domBinding;
 	if (!window[name]) window[name] = domBinding;
 	if (!window[name].prototype) window[name].prototype = domBinding.prototype;
 	
 	var baseName = ifSpec.base;
-	if (baseName) domBinding.baseBinding = domBindings[baseName];
+	if (baseName) domBinding.baseBinding = domSystem[baseName];
 }
 
 // TODO tidy-up the DOMBinding utils into a class
@@ -301,7 +306,7 @@ function lookupDOMBinding(node) {
 		if (rc != null) rule = rule[rc] || rule._default || "";
 		else rule = rule._null || "";
 	}
-	return domBindings[rule];
+	return domSystem[rule];
 }
 var filterDOMBindings = {
 	acceptNode: function(node) {
@@ -463,7 +468,7 @@ function wrap(dest, fields) {
 init();
 
 Object.copy(domSystem, { // FIXME this is a complete hack
-	addImplementation: function(name, impl) { return domBindings[name].addImplementation(impl); },
+	addImplementation: function(name, impl) { return domSystem[name].addImplementation(impl); },
 	bindInterface: bind,
 	releaseInterface: release,
 	hideInterface: hide,
@@ -552,13 +557,6 @@ Traversal.prototype.createNodeIterator = function(root, whatToShow, filter, enti
 if (window.NodeList) {
 NodeList.prototype._item = NodeList.prototype.item;
 NodeList.prototype.item = function(index) { return attachDOMBindings(this[index]); }
-NodeList.forEach = function(object, fn, context) {
-	for (var n=object.length, i=0; i<n; i++) {
-		var node = object.item(i);
-		if (node) Meeko.stuff.domSystem.attach(node);
-		fn.call(context, node, i);
-	}
-}
 }
 if (window.HTMLCollection) {
 HTMLCollection.prototype._item = HTMLCollection.prototype.item;
@@ -567,9 +565,9 @@ HTMLCollection.prototype._namedItem = HTMLCollection.prototype.namedItem;
 HTMLCollection.prototype.namedItem = function(name) { return attachDOMBindings(this[name]); }
 }
 
-domBindings.NodeList = {};
-domBindings.HTMLCollection = {};
-with (domBindings) {
+domSystem.NodeList = {};
+domSystem.HTMLCollection = {};
+with (domSystem) {
 NodeList.fix = function(base) {
 	var coll = {};
 	coll._base = base;
@@ -664,11 +662,6 @@ Document.attach = function(target) {
 		if (elt) attachDOMBindings(elt);
 		return elt;
 	}
-	target._getElementsByName = target.getElementsByName;
-	target.getElementsByName = function(name) {
-		var coll = this._getElementsByName(name);
-		return NodeList.fix(coll);
-	}
 /*
 	target._getElementsByTagName = target.getElementsByTagName;
 	target.getElementsByTagName = function(tagName) {
@@ -681,13 +674,41 @@ Document.detach = function(target) {
 	target.getElementById = target.__getElementById;
 	target._getElementById = null
 	target.__getElementById = null;
-	target.getElementsByName = target.__getElementsByName;
-	target._getElementsByName = null
-	target.__getElementsByName = null;
 /*
 	target.getElementsByTagName = target._getElementsByTagName;
 	target._getElementsByTagName = null
 */
+	this._detach(target);
+}
+HTMLDocument._attach = HTMLDocument.attach;
+HTMLDocument._detach = HTMLDocument.detach;
+HTMLDocument.attach = function(target) {
+	this._attach(target);
+	target._getElementsByName = target.getElementsByName;
+	target.getElementsByName = function(name) {
+		var coll = this._getElementsByName(name);
+		return NodeList.fix(coll);
+	}
+	target._querySelector = target.querySelector;
+	target.querySelector = function(name) {
+		var elt = this._querySelector(name);
+		if (elt) attachDOMBindings(elt);
+		return elt;
+	}
+	target._querySelectorAll = target.querySelectorAll;
+	target.querySelectorAll = function(name) {
+		var coll = this._querySelectorAll(name);
+		return NodeList.fix(coll);
+	}
+}
+HTMLDocument.detach = function(target) {
+	target.getElementsByName = target.__getElementsByName;
+	target._getElementsByName = null
+	target.__getElementsByName = null;
+	target.querySelector = target._querySelector;
+	target._querySelector = null;
+	target.querySelectorAll = target._querySelectorAll;
+	target._querySelectorAll = null;
 	this._detach(target);
 }
 HTMLElement._attach = HTMLElement.attach;
@@ -778,7 +799,6 @@ HTMLTableRowElement._detach = function(target) {
 return domSystem;
 
 })();
-
 
 ]]>
 </script>

@@ -10,6 +10,45 @@
 <head>
 <script>
 <![CDATA[
+NodeList.filter = function(array, callback, context) {
+	var out = [];
+	out.item = function(index) { return this[index]; }
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array.item(i), i, array);
+		if (rc) out.push(array.item(i));
+	}
+	return out;
+}
+NodeList.every = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array.item(i), i, array);
+		if (!rc) return false;
+	}
+	return true;
+}
+NodeList.forEach = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		callback.call(context, array.item(i), i, array);
+	}
+}
+NodeList.some = function(array, callback, context) {
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var rc = callback.call(context, array.item(i), i, array);
+		if (rc) return true;
+	}
+	return false;
+}
+
+Array.forEach(["every", "filter", "forEach", "some"], function(name) {
+	Array["_"+name] = Array[name];
+	Array[name] = Function("array",
+		"var delegate = (array.item) ? NodeList."+name+" : Array._"+name+";\n" +
+		"return delegate.apply(this, arguments);\n");
+});
 
 ]]>
 </script>
