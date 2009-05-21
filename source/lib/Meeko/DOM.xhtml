@@ -10,6 +10,7 @@
 <head>
 <script>
 <![CDATA[
+
 NodeList.filter = function(array, callback, context) {
 	var out = [];
 	out.item = function(index) { return this[index]; }
@@ -49,6 +50,327 @@ Array.forEach(["every", "filter", "forEach", "some"], function(name) {
 		"var delegate = (array.item) ? NodeList."+name+" : Array._"+name+";\n" +
 		"return delegate.apply(this, arguments);\n");
 });
+
+var domSystem = Meeko.stuff.domSystem;
+
+var Traversal = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+Traversal.getInterface = domSystem.addImplementation("Document", Traversal);
+Traversal.methods = ["createTreeWalker", "createNodeIterator"];
+Traversal.prototype.xblCreate = function(target) {
+	this.target = target;
+	var xblPublic = Traversal.methods;
+	domSystem.hideInterface(target, xblPublic);
+	domSystem.bindInterface(target, this, xblPublic, true); // NOTE override on W3C systems
+}
+Traversal.prototype.xblDestroy = function(target) {
+	this.target = null;
+	var xblPublic = Traversal.methods;
+	domSystem.releaseInterface(target, this, xblPublic, true);
+	domSystem.restoreInterface(target, xblPublic);
+}
+Traversal._createInterface = function(fields) {
+	var iface = function() {};
+	for (var n=fields.length, i=0; i<n; i++) {
+		var name = fields[i];
+		iface.prototype[name] = new Function('var node = this.baseBinding["' + name + '"](); if (node) { this.currentNode = node; Meeko.stuff.domSystem.attach(node); } return node;');
+	}
+	return iface;
+}
+
+Traversal.TreeWalker = Traversal._createInterface(["firstChild", "lastChild", "parentNode", "nextSibling", "previousSibling", "nextNode", "previousNode"]);
+Traversal.TreeWalker.prototype.forEach = function(callback, context) { return this.baseBinding.forEach.call(this, callback, context); }
+Traversal.NodeIterator = Traversal._createInterface(["nextNode", "previousNode"]);
+Traversal.NodeIterator.prototype.forEach = function(callback, context) { return this.baseBinding.forEach.call(this, callback, context); }
+
+Traversal.prototype.createTreeWalker = function(root, whatToShow, filter, entityReferenceExpansion) {
+	var _filter = {};
+	_filter.baseBinding = filter;
+	_filter.acceptNode = function(node) {
+		var lastDocumentNode = domWalker.currentNode;
+		if (lastDocumentNode === node || lastDocumentNode.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING) {
+			if (this.baseBinding) return this.baseBinding.acceptNode(node);
+			else return NodeFilter.FILTER_ACCEPT;
+		}
+		else return NodeFilter.FILTER_REJECT;
+	}
+	var iter = new Traversal.TreeWalker();
+	iter.baseBinding = document._createTreeWalker(root, whatToShow, _filter, entityReferenceExpansion);
+	return iter;
+}
+Traversal.prototype.createNodeIterator = function(root, whatToShow, filter, entityReferenceExpansion) {
+	var _filter = {};
+	_filter.baseBinding = filter;
+	_filter.acceptNode = function(node) {
+		var lastDocumentNode = domWalker.currentNode;
+		var cmp = (lastDocumentNode.compareDocumentPosition) ?
+			lastDocumentNode.compareDocumentPosition(node) :
+			Element.prototype.compareDocumentPosition.call(lastDocumentNode, node);
+		if (lastDocumentNode === node || cmp & Node.DOCUMENT_POSITION_PRECEDING) {
+			if (this.baseBinding) return this.baseBinding.acceptNode(node);
+			else return NodeFilter.FILTER_ACCEPT;
+		}
+		else return NodeFilter.FILTER_REJECT;
+	}
+	var iter = new Traversal.NodeIterator();
+	iter.baseBinding = document._createNodeIterator(root, whatToShow, _filter, entityReferenceExpansion);
+	return iter;
+}
+
+
+/*
+ HTMLCollection fixes
+ Ideally we want to remove the whole native HTMLCollection interface 
+ and provide access through the programmed iface.
+ This allows us to prevent access via array ([]) notation. 
+ Unfortunately this approach doesn't work on Safari-3, 
+ so we override the prototype methods as well. 
+*/
+
+if (window.NodeList) {
+NodeList.prototype._item = NodeList.prototype.item;
+NodeList.prototype.item = function(index) { return domSystem.attach(this[index]); }
+}
+if (window.HTMLCollection) {
+HTMLCollection.prototype._item = HTMLCollection.prototype.item;
+HTMLCollection.prototype.item = function(index) { return domSystem.attach(this[index]); }
+HTMLCollection.prototype._namedItem = HTMLCollection.prototype.namedItem;
+HTMLCollection.prototype.namedItem = function(name) { return domSystem.attach(this[name]); }
+}
+
+domSystem.NodeList = {};
+domSystem.HTMLCollection = {};
+with (domSystem) {
+NodeList.fix = function(base) {
+	var coll = {};
+	coll._base = base;
+	coll.item = function(index) { 
+		var item = this._base[index]; 
+		if (item) domSystem.attach(item);
+		return item;
+	}
+	Object.defineProperty(coll, "length", { get: function() { return this._base.length; } });
+	return coll;
+}
+NodeList.fixInterface = function(target, field) {
+	var base = target[field]; // base points to the native interface
+	target["_"+field] = base; 
+	var coll = this.fix(base);
+	Object.defineProperty(target, field, { value: coll });
+}
+HTMLCollection.fix = function(base) {
+	var coll = {};
+	coll._base = base;
+	coll.item = function(index) { 
+		var item = this._base[index]; 
+		if (item) domSystem.attach(item);
+		return item;
+	}
+	coll.namedItem = function(name) { 
+		var item = this._base[name]; 
+		if (item) domSystem.attach(item);
+		return item;
+	}
+	Object.defineProperty(coll, "length", { get: function() { return this._base.length; } });
+	return coll;
+}
+HTMLCollection.fixInterface = function(target, field) {
+	var base = target[field]; // base points to the native interface
+	target["_"+field] = base; 
+	var coll = this.fix(base);
+	Object.defineProperty(target, field, { value: coll });
+}
+HTMLCollection.addInterface = function(target, field, filter) {
+	var coll = {};
+	coll._target = target,
+	coll.item = function(index) {
+		var i = -1, node = this._target.firstChild;
+		while (node) {
+			if (node.nodeType == 1) { // Node.ELEMENT_NODE
+				if (!filter || filter(node) == 1) i++; // NodeFilter.FILTER_ACCEPT
+				if (index == i) return domSystem.attach(node);
+			}
+			node = node.nextSibling;
+		}
+		return null;
+	}
+	Object.defineProperty(coll, "length", { get: function() {
+		var i = 0, node = this._target.firstChild;
+		while (node) {
+			if (node.nodeType == 1) { // Node.ELEMENT_NODE
+				if (!filter || filter(node) == 1) i++; // NodeFilter.FILTER_ACCEPT
+			}
+			node = node.nextSibling;
+		}
+		return i;						
+	} });
+	Object.defineProperty(target, field, { value: coll });
+}
+document.__getElementById = document.getElementById;
+document.getElementById = function(id) {
+	var elt = this.__getElementById(id);
+	if (!elt) return null;
+	if (elt.attributes['id'].nodeValue == id) return elt;
+	// NOTE if getElementById is effectively getElementByIdOrName then assume getElementsByName is getElementsByIdOrName
+	var list = this.__getElementsByName(id);
+	for (var n=list.length, i=0; i<n; i++) {
+		elt = list.item(i);
+		if (elt.attributes['id'].nodeValue == id) return elt;
+	}
+	return null;
+}
+document.__getElementsByName = document.getElementsByName;
+document.getElementsByName = function(name) { // NOTE this returns a "StaticNodeList" rather than a NodeList
+	var coll = Array.filter(this.__getElementsByName(name), function(elt) { return (elt.attributes['name'].nodeValue == name); })
+	coll.item = function(index) { return this[index]; }
+	return coll;
+}
+Document._attach = Document.attach;
+Document._detach = Document.detach;
+Document.attach = function(target) {
+	this._attach(target);
+	target._getElementById = target.getElementById;
+	target.getElementById = function(id) {
+		var elt = this._getElementById(id);
+		if (elt) domSystem.attach(elt);
+		return elt;
+	}
+/*
+	target._getElementsByTagName = target.getElementsByTagName;
+	target.getElementsByTagName = function(tagName) {
+		var coll = this._getElementsByTagName(tagName);
+		return NodeList.fix(coll);
+	}
+*/
+}
+Document.detach = function(target) {
+	target.getElementById = target.__getElementById;
+	target._getElementById = null
+	target.__getElementById = null;
+/*
+	target.getElementsByTagName = target._getElementsByTagName;
+	target._getElementsByTagName = null
+*/
+	this._detach(target);
+}
+HTMLDocument._attach = HTMLDocument.attach;
+HTMLDocument._detach = HTMLDocument.detach;
+HTMLDocument.attach = function(target) {
+	this._attach(target);
+	target._getElementsByName = target.getElementsByName;
+	target.getElementsByName = function(name) {
+		var coll = this._getElementsByName(name);
+		return NodeList.fix(coll);
+	}
+	target._querySelector = target.querySelector;
+	target.querySelector = function(name) {
+		var elt = this._querySelector(name);
+		if (elt) domSystem.attach(elt);
+		return elt;
+	}
+	target._querySelectorAll = target.querySelectorAll;
+	target.querySelectorAll = function(name) {
+		var coll = this._querySelectorAll(name);
+		return NodeList.fix(coll);
+	}
+}
+HTMLDocument.detach = function(target) {
+	target.getElementsByName = target.__getElementsByName;
+	target._getElementsByName = null
+	target.__getElementsByName = null;
+	target.querySelector = target._querySelector;
+	target._querySelector = null;
+	target.querySelectorAll = target._querySelectorAll;
+	target._querySelectorAll = null;
+	this._detach(target);
+}
+HTMLElement._attach = HTMLElement.attach;
+HTMLElement._detach = HTMLElement.detach;
+HTMLElement.attach = function(target) {
+	this._attach(target);
+	if (target.children) HTMLCollection.fixInterface(target, "children");
+	else HTMLCollection.addInterface(target, "children");
+}
+HTMLElement.detach = function(target) {
+	target.children = target._children;
+	target._children = null;
+	this._detach(target);
+}
+
+HTMLFormElement._attach = HTMLFormElement.attach;
+HTMLFormElement._detach = HTMLFormElement.detach;
+HTMLFormElement.attach = function(target) {
+	this._attach(target);
+	HTMLCollection.fixInterface(target, "elements");
+}
+HTMLFormElement._detach = function(target) {
+	target.elements = target._elements;
+	target._elements = null;
+	this._detach(target);
+}
+HTMLSelectElement._attach = HTMLSelectElement.attach;
+HTMLSelectElement._detach = HTMLSelectElement.detach;
+HTMLSelectElement.attach = function(target) {
+	this._attach(target);
+	HTMLCollection.fixInterface(target, "options");
+	if (target.form) domSystem.attach(target.form);
+}
+HTMLSelectElement._detach = function(target) {
+	target.options = target._options;
+	target._options = null;
+	this._detach(target);
+}
+HTMLInputElement._attach = HTMLInputElement.attach;
+HTMLInputElement._detach = HTMLInputElement.detach;
+HTMLInputElement.attach = function(target) {
+	this._attach(target);
+	if (target.form) domSystem.attach(target.form);
+}
+HTMLInputElement._detach = function(target) {
+	this._detach(target);
+}
+HTMLTableElement._attach = HTMLTableElement.attach;
+HTMLTableElement._detach = HTMLTableElement.detach;
+HTMLTableElement.attach = function(target) {
+	this._attach(target);
+	if (target.tHead) domSystem.attach(target.tHead);
+	if (target.tFoot) domSystem.attach(target.tFoot);
+	HTMLCollection.fixInterface(target, "tBodies");
+	HTMLCollection.fixInterface(target, "rows");
+}
+HTMLTableElement._detach = function(target) {
+	target.tBodies = target._tBodies;
+	target._tBodies = null;
+	target.rows = target._rows;
+	target._rows = null;
+	this._detach(target);
+}
+HTMLTableSectionElement._attach = HTMLTableSectionElement.attach;
+HTMLTableSectionElement._detach = HTMLTableSectionElement.detach;
+HTMLTableSectionElement.attach = function(target) {
+	this._attach(target);
+	HTMLCollection.fixInterface(target, "rows");
+}
+HTMLTableSectionElement._detach = function(target) {
+	target.rows = target._rows;
+	target._rows = null;
+	this._detach(target);
+}
+HTMLTableRowElement._attach = HTMLTableRowElement.attach;
+HTMLTableRowElement._detach = HTMLTableRowElement.detach;
+HTMLTableRowElement.attach = function(target) {
+	this._attach(target);
+	HTMLCollection.fixInterface(target, "cells");
+}
+HTMLTableRowElement._detach = function(target) {
+	target.cells = target._cells;
+	target._cells = null;
+	this._detach(target);
+}
+}
 
 ]]>
 </script>
