@@ -128,75 +128,78 @@ var Array = function() {
 }
 Array.prototype = new _global.Array();
 
-Array.prototype.indexOf = function(val, start) {
+Array.prototype.indexOf = function(testVal, start) {
 	var array = this;
 	var n = array.length;
 	if (start == null) start = 0;
 	for (var i=start; i<n; i++) {
-		if (val == array[i]) return i;
+		var val = array[i];
+		if (val === testVal) return i;
 	}
 	return -1;
 }
-
-Array.prototype.lastIndexOf = function(val, start) {
+Array.prototype.lastIndexOf = function(testVal, start) {
 	var array = this;
 	var n = array.length;
 	if (start == null) start = n-1;
 	for (var i=start; i>=0; i--) {
-		if (val == array[i]) return i;
+		var val = array[i];
+		if (val === testVal) return i;
 	}
 	return -1;
 }
-
-Array.prototype.filter = function(callback, context) {
-	var array = this;
-	var out = [];
-	var n = array.length;
-	for (var i=0; i<n; i++) {
-		var rc = callback.call(context, array[i], i, array);
-		if (rc) out.push(array[i]);
-	}
-	return out;
-}
-
 Array.prototype.every = function(callback, context) {
 	var array = this;
 	var n = array.length;
 	for (var i=0; i<n; i++) {
-		var rc = callback.call(context, array[i], i, array);
-		if (!rc) return false;
+		var val = array[i];
+		if (val == null) continue;
+		if (!callback.call(context, val, i, array)) return false;
 	}
 	return true;
 }
-
-Array.prototype.forEach = function(callback, context) {
-	var array = this;
-	var n = array.length;
-	for (var i=0; i<n; i++) {
-		callback.call(context, array[i], i, array);
-	}
-}
-
-
-Array.prototype.map = function(callback, context) {
-	var array = this;
-	var out = [];
-	var n = array.length;
-	for (var i=0; i<n; i++) {
-		var rc = callback.call(context, array[i], i, array);
-		out[i] = rc;
-	}
-	return out;
-}
-
 Array.prototype.some = function(callback, context) {
 	var array = this;
 	var n = array.length;
 	for (var i=0; i<n; i++) {
-		var rc = callback.call(context, array[i], i, array);
-		if (rc) return true;
+		var val = array[i];
+		if (val == null) continue;
+		if (callback.call(context, val, i, array)) return true;
 	}
 	return false;
+}
+Array.prototype.forEach = function(callback, context) {
+	var array = this;
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var val = array[i];
+		if (val == null) continue;
+		callback.call(context, val, i, array);
+	}
+}
+Array.prototype.filter = function(callback, context) {
+	var array = this;
+	var out = [];
+	if (useItem) out.item = function(index) { return this[index]; }
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var val = array[i];
+		if (val == null) continue;
+		callback.call(context, val, i, array) && out.push(val);
+	}
+	return out;
+}
+Array.prototype.map = function(callback, context) {
+	var array = this;
+	var out = [];
+	if (useItem) out.item = function(index) { return this[index]; }
+	var n = array.length;
+	for (var i=0; i<n; i++) {
+		var val = array[i];
+		if (val == null) continue;
+		out[i] = callback.call(context, array[i], i, array);
+	}
+	return out;
 }
 
 // NOTE non-standard Array methods

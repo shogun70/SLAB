@@ -71,6 +71,7 @@ function getElementsBySelector(scope, selectorText, single) { // TODO namespaces
 	if (null == selectorText) return false;
 	var selectorList = getSelector(selectorText);
 	var nodeList = [];
+	nodeList.item = function(index) { return this[index]; }
 	if (!selectorList) return (single) ? null : nodeList;
 	
 	// First up check for ID selectors which result in instant evaluation
