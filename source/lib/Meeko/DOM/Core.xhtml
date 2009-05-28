@@ -134,7 +134,7 @@ DOMTokenList.prototype.add = function(token) {
 	this._setText(text);
 }
 DOMTokenList.prototype.remove = function(token) {
-	var text = this._getText(), tmp = text, final = "";
+	var text = this._getText(), tmp = text, result = "";
 	var rex = /^(\s*)(\w+)\b(\s*)/;
 	var i = 0;
 	while (1) { // loop forever
@@ -142,7 +142,7 @@ DOMTokenList.prototype.remove = function(token) {
 		if (m[0] == tmp) { // at end
 			if (m[2] != token) {
 				i++;
-				final += m[0];
+				result += m[0];
 			}
 			tmp = "";
 			break;
@@ -153,12 +153,12 @@ DOMTokenList.prototype.remove = function(token) {
 		}
 		else {
 			i++;
-			final += m[1] + m[2];
+			result += m[1] + m[2];
 			tmp = tmp.substring(m[1].length + m[2].length);
 		}
 	}
-	if (final == text) return;
-	this._setText(final);
+	if (result == text) return;
+	this._setText(result);
 }
 DOMTokenList.prototype.toggle = function(token) {
 	if (this.has(token)) this.remove(token);
