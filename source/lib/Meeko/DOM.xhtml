@@ -293,10 +293,25 @@ HTMLElement.attach = function(target) {
 	this._attach(target);
 	if (target.children) HTMLCollection.fixInterface(target, "children");
 	else HTMLCollection.addInterface(target, "children");
+	target._querySelector = target.querySelector;
+	target.querySelector = function(name) {
+		var elt = this._querySelector(name);
+		if (elt) domSystem.attach(elt);
+		return elt;
+	}
+	target._querySelectorAll = target.querySelectorAll;
+	target.querySelectorAll = function(name) {
+		var coll = this._querySelectorAll(name);
+		return NodeList.fix(coll);
+	}
 }
 HTMLElement.detach = function(target) {
 	target.children = target._children;
 	target._children = null;
+	target.querySelector = target._querySelector;
+	target._querySelector = null;
+	target.querySelectorAll = target._querySelectorAll;
+	target._querySelectorAll = null;
 	this._detach(target);
 }
 
