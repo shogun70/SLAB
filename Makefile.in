@@ -3,7 +3,7 @@ VPATH = @srcdir@
 
 PKGNAME = @PKGNAME@
 PKGVERSION = @PKGVERSION@
-SUBDIRS = source
+SUBDIRS = source doc
 
 include @top_srcdir@/mk/gnu.bsdvars.mk
 
