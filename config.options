@@ -5,7 +5,6 @@
 PKGNAME = SLAB
 PKGVERSION = 0.6
 basedir = http://localhost
-destdir = /Library/Webserver/Documents
 prefix = dist/
 pkgreldir = ${PKGNAME}/${PKGVERSION}
 pkglibdir = ${basedir}/${prefix}${pkgreldir}
@@ -13,7 +12,5 @@ pkgdefaultlibdir = ${basedir}/${prefix}${PKGNAME}/default
 pkglibexecdir = ${basedir}/${prefix}${pkgreldir}
 pkgdemodir = ${basedir}/${prefix}${pkgreldir}/demos
 pkgdocdir = ${basedir}/${prefix}${pkgreldir}/doc
-destpkglibdir = ${destdir}/${prefix}${pkgreldir}
-destpkglibexecdir = ${destdir}/${prefix}${pkgreldir}
-destpkgdemodir = ${destdir}/${prefix}${pkgreldir}/demos
-destpkgdocdir = ${destdir}/${prefix}${pkgreldir}/doc
+
+JSMIN = cat
