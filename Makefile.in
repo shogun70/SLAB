@@ -1,8 +1,9 @@
-VPATH = ${srcdir}
+srcdir = @srcdir@
+VPATH = @srcdir@
 
 SUBDIRS = source doc
 
-include ${top_srcdir}/mk/gnu.bsdvars.mk
+include @top_srcdir@/mk/gnu.bsdvars.mk
 
 .SUFFIXES :
 
