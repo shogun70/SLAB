@@ -1,0 +1,218 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="CONTENT-TYPE" content="text/html; charset=UTF-8" />
+<title>XBLUI - Reference</title>
+<link rel="viewer" href="viewer.xhtml" />
+</head>
+<body>
+<h1>Reference</h1>
+<h2>Introduction</h2>
+<h3>Applying built-in enhancements</h3>
+<p>
+XBLUI enhancements are implemented with element bindings. 
+Applying enhancements to a web-page is done by specifying which bindings are attached to elements. 
+There are two ways to do this:
+<ul>
+	<li>Reference the built-in XBL document as a binding document of the page, e.g.
+	<pre>&lt;link rel="bindings" type="application/xml" href="http://dist.meekostuff.net/XBLUI/default/WF2.xml" /&gt;</pre>
+	</li>
+	<li>Create a binding document with bindings that extend specific built-in bindings.
+	You must use this method if you want to customize built-in bindings. </li>
+</ul>
+</p>
+<h3>Simple and Compound Enhancements</h3>
+<p>Some HTML elements have significance that is independent of their context in a document. 
+<code>input</code> and <code>&lt;a href&gt;</code> elements are examples of this -
+their behavior doesn't depend on ancestor or descendant elements. </p>
+<p>Other HTML elements are only valid when they have certain ancestor or descendant elements.
+Elements in the list model (e.g. <code>ul, li</code>) and table model (e.g. <code>table, tr, td</code>) are of this flavor. 
+</p>
+<p>Similarly, XBLUI bindings come in context-free and context-dependant flavors.</p>
+<p>
+Some XBLUI enhancements are implemented with a binding attached to a single element.
+The WebForms2 input enhancements are examples of this -
+their behavior doesn't depend on bindings being attached to any other elements.
+</p>
+<p>
+Other XBLUI enhancements are implemented with bindings attached to two or more elements. 
+e.g. the tree enhancement is implemented with a tree binding attached to the root element of the tree,
+and treeitem binding attached to list-items in the tree.</p>
+<p>
+Enhancements implemented as a binding attached to a single element are referred to as simple enhancements,
+while enhancements requiring bindings to be attached to multiple elements are called compound enhancements.
+</p>
+<h2>Built-in XBL documents</h2>
+<dl>
+	<dt>UI.xml</dt>
+	<dd>Bindings that implement common UI enhancements - tree, menu, tabbox, sortable-table.</dd>
+	<dt>WF2.xml</dt>
+	<dd>Bindings that partially implement element behaviors of WebForms2. Bindings may be attached specifically, or imported in total</dd>
+</dl>
+<h2>User Interface bindings</h2>
+<p>These bindings are provided in UI.xml. </p>
+<h3 id="ui:treeitem">treeitem</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>An item in a <a href="#ui:tree">tree</a>. A treeitem is also the root of a sub-tree (or branch) and has similar behavior to a tree.
+	In fact, the tree binding sub-classes the treeitem binding.</dd>
+	<dt>Expected bound-element</dt>
+	<dd>li</dd>
+	<dt>Parent binding</dt>
+	<dd>tree</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>getRefElement()</li>
+		<li>getView()</li>
+		<li>getList()</li>
+		<li>setOpenState(state)</li>
+		<li>getOpenState()</li>
+	</ul></dd>
+</dl>
+
+<h3 id="ui:tree">tree</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>A hierarchical list with behavior that allows different branches of the tree to be hidden or shown.</dd>
+	<dt>Expected bound-element</dt>
+	<dd><code>ul</code>, <code>ol</code>, or <code>div</code> that contains a single list as a child</dd>
+	<dt>Required child bindings</dt>
+	<dd>treeitem</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>getRefElement()</li>
+		<li>getView()</li>
+		<li>getList()</li>
+		<li>getSelectedItem()</li>
+		<li>selectItem()</li>
+		<li>setOpenState(state)</li>
+		<li>getOpenState()</li>
+	</ul></dd>
+</dl>
+
+<h3 id="ui:menu">menu</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>A menu is a tree where only one branch is visible at a time and sub-menus popup adjacent to higher menus. </dd>
+	<dt>Expected bound-element</dt>
+	<dd><code>ul</code>, <code>ol</code>, or <code>div</code> that contains a single list as a child</dd>
+	<dt>Required child binding</dt>
+	<dd>treeitem</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>getRefElement()</li>
+		<li>getView()</li>
+		<li>getList()</li>
+		<li>getSelectedItem()</li>
+		<li>selectItem()</li>
+		<li>setOpenState(state)</li>
+		<li>getOpenState()</li>
+	</ul></dd>
+</dl>
+<h3 id="ui:viewBox">viewBox</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>A viewBox is like the viewPort of your browser window.
+	You can navigate it by scrolling the box or by calling a method to jump to a specified element.
+	This is an abstract interface. The precise behavior depends on the sub-class used.</dd>
+	<dt>Expected bound-element</dt>
+	<dd><code>div</code> or any structural element</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>setView(item)</li>
+	</ul></dd>	
+</dl>
+<h3 id="ui:scrollBox">scrollBox</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>A scrollBox is a sub-class of viewBox. 
+	You can navigate it by scrolling the box or by calling a method to jump to a specified element.</dd>
+	<dt>Expected bound-element</dt>
+	<dd><code>div</code> or any structural element</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>setView(item)</li>
+	</ul></dd>
+</dl>
+<h3 id="ui:switchBox">switchBox</h3>
+<dl>
+	<dt>Description</dt>
+	<dd>A switchBox is a sub-class of viewBox. 
+	Navigation within the scrollBox is only possible by calling setView() or setViewByIndex(),
+	and the view is always a child element of the bound-element.
+	This behavior is desirable for tab-panels in a tab-box.</dd>
+	<dt>Expected bound-element</dt>
+	<dd><code>div</code> or any structural element</dd>
+	<dt>DOM Interface</dt>
+	<dd><ul>
+		<li>setView(item)</li>
+		<li>setViewByIndex(index)</li>
+	</ul></dd>
+</dl>
+
+<h2>Web Forms 2 bindings</h2>
+<p>XBLUI provides extensions to form control elements which
+partially implement the WHATWG Web Forms 2.0 (Working Draft). </p>
+<p>You can apply all the available Web Forms 2 bindings by adding the following in the head of your page: </p>
+<pre>&lt;script type="text/javascript"&gt;<br />if (!document.implementation.hasFeature("WebForms", "2.0"))<br /> document.write('&lt;link rel="bindings" href="http://dist.meekostuff.net/XBLUI/default/WF2.xml" /&gt;');<br />&lt;/script&gt;</pre>
+<p>This will install XBLUI's Web Forms 2 enhancements only if the feature is not implemented natively.</p>
+<p>Details of individual bindings appear below. Properties and
+methods listed here should behave as detailed in the specification
+unless otherwise noted. Properties and methods that are in the
+specification but not listed here are not implemented. </p>
+<h3 id="wf2:WF2FormElement">WF2FormElement</h3>
+<h5>Notes:</h5>
+<ul>
+<li>the <code>replace</code>
+and <code>data</code> attributes/properties. Getter and
+setter methods are also provided. </li>
+<li>
+the <code>checkValidity()</code>
+and <code>resetFromData()</code> methods </li>
+<li>
+the <code>elements</code> array isn't
+overridden and returns whatever is in the native implementation </li>
+</ul>
+<h3 id="wf2:WF2SelectElement">WF2SelectElement</h3>
+<h5>Notes:</h5>
+<ul>
+<li>the <code>data</code>
+attribute/property </li>
+<li>
+the <code>checkValidity()</code> and <code>setCustomValidity()</code>
+methods </li>
+</ul>
+<h3 id="wf2:WF2TextInput">WF2TextInput</h3>
+<h5>Notes:</h5>
+<ul>
+<li>the <code>pattern</code>
+attribute/property </li>
+<li>
+the <code>checkValidity()</code> method </li>
+</ul>
+<h3 id="wf2:WF2NumberInput">WF2NumberInput</h3>
+<h5>Notes:</h5>
+<ul>
+<li>the <code>min</code>,
+<code>max</code>, <code>step</code>
+attributes/properties </li>
+<li>
+the <code>stepUp()</code>
+and <code>stepDown()</code> methods </li>
+<li>
+the <code>checkValidity()</code> and <code>setCustomValidity()</code>
+methods </li>
+</ul>
+<h3 id="wf2:WF2RangeInput">WF2RangeInput</h3>
+<h5>Notes:</h5>
+<ul>
+<li>the <code>min</code>,
+<code>max</code>, <code>step</code>
+attributes/properties </li>
+<li>
+the <code>stepUp()</code>
+and <code>stepDown()</code> methods </li>
+<li>
+the <code>checkValidity()</code> and <code>setCustomValidity()</code>
+method </li>
+</ul>
+</body></html>

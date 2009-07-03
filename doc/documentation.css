@@ -1,0 +1,86 @@
+html {
+font-family: arial;
+width: 100%; height: 100%;
+text-align: center;
+margin: 0; padding: 0;
+}
+body {
+margin: 0 auto; padding: 1em;
+width: 960px;
+text-align: left;
+background-color: #ffffff;
+color: #000000;
+}
+#head {
+}
+.popup {
+border: 1px solid silver;
+padding: 0 0.2em;
+background-color: #ffffcc;
+font-size: smaller;
+font-weight: normal;
+color: #666666;
+}
+#main {
+float: left;
+width: 620px;
+margin-right: 10px;
+}
+#sidebar {
+float: left;
+width: 300px;
+margin-left: 10px;
+padding: 5px;
+border: 1px solid #777777;
+background-color: #dddddd; 
+}
+#sidebar ul, #sidebar li {
+list-style-type: none;
+list-style-position: outside;
+/*
+margin-left: 0;
+padding-left: 0;
+*/
+}
+.warn {
+border: 1px solid #000000;
+margin: 1em;
+padding: 0.5em;
+background-color: #ffcc00;
+}
+.todo {
+border: 3px dashed #cc0000;
+padding: 0 0.5em;
+}
+.table {
+border: none;
+}
+.th, .td {
+border: none;
+}
+pre {
+margin: 0;
+padding: 0.5em;
+line-height: 1.2em;
+border-left-style: double;
+background-color: #eeeeee;
+overflow: auto;
+}
+br {
+	line-height: 0;
+	margin: 0; padding: 0;
+}
+.note {
+padding: 0 1em;
+color: #009900;
+font-weight: bold;
+}
+h1, h2, h3, h4, h5, h6, .info {
+color: #3333ff;
+}
+#content h1 {
+	border-bottom: 1px solid #000000;
+}
+abbr {
+	border-bottom: 1px dotted;
+}

@@ -1,0 +1,28 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="CONTENT-TYPE" content="text/html; charset=utf-8" />
+<title>XBLUI - Debugging</title>
+<link rel="viewer" href="viewer.xhtml" />
+</head>
+<body lang="en-AU">
+<h1>Debugging</h1>
+<h2>Meeko Browser</h2>
+<p>In general you should use <a href="http://dist.meekostuff.net/XBLUI/default/demos/browser.html">Meeko Browser</a>. 
+Meeko Browser is a browser-hosted browser. i.e. it is a web-page that provides basic features of a browser. 
+You can load a page by entering it in the address bar or by selecting it from the bookmarks. </p>
+<p>It also includes a cross-browser web-inspector which provides logging and page inspection features. </p>
+<h2>Logging</h2>
+<p>When you use XBLUI logging is available via the XPL system.</p>
+<p>If you want to use logging in a XBL document, include the following at the top:
+<pre>&lt;script&gt;<br /> var xplSystem = Meeko.stuff.xplSystem; <br /> var xplContext = xplSystem.createContext("MyRef");<br /> var logger = context.logger;<br />&lt;/script&gt;</pre>
+</p>
+<p>You can then send messages to the logging system with <code>logger.info(message)</code>.
+The logger supports several log-levels by calling different methods as follows:
+<ul>
+	<li><code>logger.debug()</code></li>
+	<li><code>logger.info()</code></li>
+	<li><code>logger.warn()</code></li>
+	<li><code>logger.error()</code></li>
+</ul>
+</p>
+</body></html>

@@ -1,0 +1,35 @@
+srcdir = @srcdir@
+builddir = @builddir@
+VPATH = @srcdir@
+
+include @top_srcdir@/mk/gnu.bsdvars.mk
+
+.SUFFIXES: .html .xml .css
+DOCS = index # guide reference debug status
+TARGETS += ${foreach DOC,${DOCS},${DOC}.html}
+RESOURCES = documentation.css
+
+PARAMS += --stringparam XBL_SCRIPT_URL ${pkglibexecdir}/XBLUI.js
+
+BUILD_TARGETS += ${foreach DOC,${DOCS},${builddir}/${DOC}.html}
+
+all: build
+
+build: ${BUILD_TARGETS} ${RESOURCES}
+
+clean:
+	-rm ${TARGETS}
+	-rm wrapper.html
+
+install: ${BUILD_TARGETS} ${RESOURCES}
+	${URLINSTALL} ${TARGETS} ${pkgdocdir}/
+	for FILE in ${RESOURCES}; do \
+		${URLINSTALL} ${srcdir}/$${FILE} ${pkgdocdir}/;\
+	done;
+
+${BUILD_TARGETS}: ${builddir}/%.html : ${srcdir}/%.html ${builddir}/wrapper.html
+	${HTMLPP} ${PARAMS} ${.IMPSRC} |\
+	${HTMLWRAP} --wrapper wrapper.html - > ${.TARGET}
+
+${builddir}/wrapper.html: ${srcdir}/wrapper.html
+	${HTMLPP} ${PARAMS} ${.IMPSRC} > ${.TARGET}

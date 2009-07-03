@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>SLAB - About</title>
+</head>
+<body lang="en-AU">
+<h2>Overview</h2>
+<p>SLAB is a cross-browser Javascript library that implements ECMAScript and
+<abbr title="Document Object Model">DOM</abbr> fixes and enhancements
+to promote standards-based, browser-agnostic web-development. </p>
+<p>SLAB upgrades the browser scripting environment to support the following features:</p>
+<ul>
+<li>New <code>Array</code> methods and generics: <code>every, filter, forEach, map, some</code> <sup>1</sup></li>
+<li><code>Function.prototype.bind()</code> - binds a function to an object <sup>2</sup></li>
+<li><code>Object.defineProperty()</code> - specifies getter and/or setter functions for an object property <sup>3</sup></li>
+<li>DOM prototypes - <code>HTMLElement</code>, etc </li>
+<li><code><i>element</i>.classList</code> - provides methods to manipulate tokens in the <code>class</code> attribute </li>
+<li><code><i>document|element</i>.querySelector()</code> and <code>querySelectorAll()</code> - get elements by CSS selector </li>
+<li>W3C DOM Event model</li>
+<li><code>DOMContentLoaded</code> and <code>progress</code> <sup>4</sup> events during document load </li>
+<li><code>DOMNodeInserted</code> and <code>DOMNodeRemoved</code> events </li>
+<li>... and more.</li>
+</ul>
+<small><b>Notes:</b>
+<ol>
+<li>Array generics are non-standard</li>
+<li>bind() only accepts one argument - the target of the bind</li>
+<li>There are limitations for getter/setter functions on browsers that don't have <code><i>object</i>.__defineGetter__</code>, etc (mainly IE 6 &amp; 7).</li>
+<li>The <code>progress</code> event is non-standard on <code>document</code> objects</li>
+</ol>
+</small>
+<h2>Example</h2>
+<p>A simple SLAB enabled web-page could look like this</p>
+<pre>
+&lt;html&gt;
+ &lt;head&gt;
+  &lt;!-- SLAB should be included before other scripts --&gt;
+  &lt;script src="http://dist.meekostuff.net/SLAB/default/SLAB.js"&gt;&lt;/script&gt;<sup>1,2</sup>
+  &lt;script&gt;
+/*
+ * ECMAScript enhancements are available
+ * DOM Prototypes are available
+ * Custom DOM methods should be implemented before initializing DOM system
+ */
+HTMLFormElement.prototype.encode = function() {
+ var txt = "";
+ Array.forEach(this.elements, function(el) {
+  if (el.name) txt += el.name + ":" + encodeURIComponent(el.value) + "\n";
+ });
+ return txt;
+}
+
+/*
+ * Initialize the DOM system
+ */
+Meeko.stuff.domSystem.initialize(); <sup>3</sup>
+
+/*
+ * Standard DOM interfaces now available on window and document,
+ * and are (almost always) automatically available on elements
+ */
+var onSubmit = function(event) {
+ var form = event.target;
+ var rc = confirm("Submit this data now?\n" + form.encode());
+ if (!rc) event.preventDefault();
+}
+
+document.addEventListener("submit", onSubmit, false);
+  &lt;/script&gt;
+ &lt;/head&gt;
+ &lt;body&gt;
+  &lt;form action="" method="GET"&gt;
+   &lt;label&gt;First name &lt;input type="text" name="firstName" /&gt;&lt;/label&gt;&lt;br /&gt;
+   &lt;label&gt;Last name &lt;input type="text" name="lastName" /&gt;&lt;/label&gt;&lt;br /&gt;
+   &lt;input type="submit" /&gt;
+  &lt;/form&gt;  
+ &lt;/body&gt;
+&lt;/html&gt;
+</pre>
+<small><ol>
+<li>You can also link to a specific release or snapshot of the library.</li>
+<li>You could also download the library to your server and include it from there.</li>
+<li>DOM System initialization is triggered when the body element enters the document
+(if manual initialization hasn't occurred before).</li>
+</ol></small>
+<p>This example adds an encode() method to all form elements and adds an event-listener for submit-events
+that requests user-confirmation of form-submission.</p>
+<h2>Warnings</h2>
+<h3>Just-in-time Element binding</h3>
+<p>SLAB doesn't apply fixes and enhancements to elements at document load, which would potentially involve every element in the document.
+Instead it attempts to guarantee that elements are fixed before your code references them.
+This is done by over-riding DOM methods and properties for the accessing of elements, such as
+<code><i>document</i>.getElementById()</code>,
+<code><i>document|element</i>.querySelectorAll()</code> and
+<code><i>element</i>.children</code>.
+The following accessors are NOT supported:
+<ul>
+<li><code><i>document</i>.getElementsByTagName()</code></li>
+<li><code><i>element</i>.childNodes</code></li>
+<li><code><i>element</i>.firstChild</code></li>
+<li><code><i>element</i>.lastChild</code></li>
+<li><code><i>element</i>.previousSibling</code></li>
+<li><code><i>element</i>.nextSibling</code></li>
+<li><code><i>element</i>.parentNode</code></li>
+</ul>
+</p>
+<p>Some accessors, such as
+<code><i>document|element</i>.querySelectorAll()</code> and
+<code><i>element</i>.children</code>, 
+return NodeList or HTMLCollection objects.
+Elements in these collections must be accessed with the <code>item()</code> method.
+e.g. <code><i>element</i>.children.item(index)</code>. 
+SLAB does NOT support the commonly used array-notation,
+and, where possible, prevents access using array notation so that,
+<code><i>element</i>.children[index]</code>, for example would return null.
+</p>
+<p>Generic Array methods <code>filter, forEach, every, some</code> are provided
+that can accept modified element collections.
+</p>
+<h3>No inline event handlers</h3>
+<p>SLAB does NOT support inline event handlers, e.g. <code><i>element</i>.onclick = function() { ... },</code>.
+</p>
+<h2>Features</h2>
+<p>SLAB upgrades the browser scripting environment with support for a subset of the APIs defined in the following standards:</p>
+<ul>
+<li><a href="http://www.ecma-international.org/publications/files/drafts/tc39-2009-025.pdf">ECMAScript-5</a>
+</li>
+<li><a href="http://www.w3.org/TR/DOM-Level-3-Events">DOM Level 3 - Events</a>
+</li>
+<li><a href="http://www.w3.org/TR/selectors-api/">Selectors API</a>
+</li>
+<li><a href="http://www.w3.org/TR/DOM-Level-2-Traversal-Range">DOM Level 2 - Traversal and Range</a>
+</li>
+<li><a href="http://www.w3.org/TR/XMLHttpRequest">XMLHttpRequest</a>
+</li>
+<li><a href="http://www.w3.org/TR/html5/">HTML5</a>
+</li>
+</ul>
+<h2>Licensing</h2>
+<p>SLAB is available under the
+<a href="http://creativecommons.org/licenses/by-nd/3.0/legalcode">Creative-Commons Attribution, No-Derivatives license</a>.
+If you aren't sure whether that applies to your intended usage then contact me for specific approval.
+The following list are guides for some specific scenarios:</p>
+<ul>
+<li>you can use the library in any web-page by including a script element linking to the original file on the meekostuff.net domain</li>
+<li>you can also copy the library to the domain of the web-page and link to it there</li>
+<li>you can copy the library to another domain for the purpose of redistribution provided you acknowledge that it is the SLAB library
+and that you provide a link to the <a href="http://meekostuff.net/projects/SLAB">SLAB project page</a>
+at <a href="http://meekostuff.net">meekostuff.net</a>.</li>
+</ul>
+<p>Long-term licensing is yet to be decided - please check the license conditions of new releases before use. </p>
+</body>
+</html>

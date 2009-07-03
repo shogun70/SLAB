@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+ <head>
+  <!-- SLAB should be included before other scripts -->
+  <script type="text/javascript" src="http://amelie.local/dist/SLAB/0.6/SLAB.js"></script>
+  <script type="text/javascript">
+/*
+ * ECMAScript enhancements are available
+ * DOM Prototypes are available
+ * Custom DOM methods should be implemented before initializing DOM system
+ */
+HTMLFormElement.prototype.encode = function() {
+ var txt = "";
+ Array.forEach(this.elements, function(el) {
+  if (el.name) txt += el.name +  ":" + encodeURIComponent(el.value)) + "\n";
+ });
+ return txt;
+}
+
+/*
+ * Initialize the DOM system
+ */
+Meeko.stuff.domSystem.initialize();
+
+/*
+ * Standard DOM interfaces now available on window and document,
+ * and are (almost always) automatically available on elements
+ */
+var onSubmit = function(event) {
+ var form = event.target;
+ confirm("Submit this data now?\n" + form.encode()) || event.preventDefault();
+}
+
+document.addEventListener("DOMContentLoaded", function(event) {
+ Array.forEach(document.querySelectorAll("form"), function(form) {
+  form.addEventListener("submit", onSubmit, false);
+ });
+}, false);
+  </script>
+ </head>
+ <body>
+  <form action="" method="POST">
+   <label>First name <input type="text" name="firstName" /></label><br />
+   <label>Last name <input type="text" name="lastName" /></label><br />
+   <input type="submit" />
+  </form>
+ </body>
+</html>

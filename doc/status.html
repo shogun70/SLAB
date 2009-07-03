@@ -1,0 +1,559 @@
+<?xml version="1.0"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta content="text/html; charset=ISO-8859-1" http-equiv="content-type" />
+  <title>XBLUI - Status</title>
+<link rel="viewer" href="viewer.xhtml" />
+
+  <style type="text/css">
+table {
+    text-align: left;
+/*
+    width: 620px;
+    border-collapse: collapse;
+    border: 1px solid gray;
+*/
+    table-layout: fixed;
+}
+caption {
+  text-align: center;
+  font-size: large;
+/*
+  border: 1px solid gray;
+*/
+}
+thead tr th {
+  border-bottom: 3px double #000000;
+}
+
+col.col1 { width: 50ex; }
+
+small.popup {
+  display: block;
+  position: absolute;
+  left: -1000px;
+  z-index: 1;
+}
+
+th, td {
+    padding-left: 5px; padding-right: 5px;
+    overflow: hidden;
+    margin: 2px 0;
+/*
+    border: 1px solid gray;
+*/
+}
+td small { display: block; }
+td label { border-bottom: 1px dotted; }
+.level1 { color: black; }
+td.level1 { padding-left: 5px; }
+.level2 { color: #3f3fff; }
+td.level2 { padding-left: 20px; }
+.level3 { color: purple; }
+td.level3 { padding-left: 35px; }
+td.level1, td.level2, td.level3 { white-space: nowrap; }
+
+.no { background-color: #cb000f; color: #ffffff; }
+.part { color: #00882d; border: 1px solid #00882d;}
+.almost { background-color: #40a662; color: #ffffff; }
+.yes { background-color: #00882d; color: #ffffff; }
+.hidden { display: none; }
+  </style>
+<xbl xmlns="http://www.w3.org/ns/xbl">
+ <binding element="td.part, td.almost, td.yes">
+  <implementation>
+({
+initialize: function() {
+  if (this.popup) return;
+  var element = this.boundElement;
+  var popup = element.getElementsByTagName("small")[0];
+  if (popup) popup.className = "popup";
+  this.popup = popup;
+  var label = element.getElementsByTagName("label")[0];
+  this.label = label;
+},
+
+xblEnteredDocument: function() {
+  this._init = (function(binding) { return function(event) { binding.initialize(); } })(this);
+  this.boundElement.ownerDocument.addEventListener("load", this._init, false);
+  this.initialize();
+},
+
+xblLeftDocument: function() {
+  this.boundElement.ownerDocument.removeEventListener("load", this._init, false);
+}
+})
+  </implementation>
+  <handlers>
+   <handler event="mouseover">
+if (event.target != this.label) return;
+if (!this.popup) return;
+
+var element = this.boundElement;
+var document = element.ownerDocument;
+var row = element.parentNode;
+var offsetLeft = 0, offsetTop = 0;
+for (var elt=row; elt!=document.body; elt=elt.offsetParent) {
+  offsetLeft += elt.offsetLeft;
+  offsetTop += elt.offsetTop;
+}
+var popup = this.popup;
+popup.style.width = "" + row.offsetWidth + "px";
+popup.style.top = "" + (offsetTop + row.offsetHeight) + "px";
+popup.style.left = "" + offsetLeft + "px";
+   </handler>
+   <handler event="mouseout">
+if (event.target != this.label) return;
+if (!this.popup) return;
+
+var element = this.boundElement;
+var row = element.parentNode;
+var popup = this.popup;
+popup.style.left = "-1000px";
+   </handler>
+  </handlers>
+ </binding>
+</xbl>
+</head>
+<body>
+<h1>Implementation Status</h1>
+<p>
+    This implementation hasn't been rigorously tested.  The following report may be inaccurate.
+</p>
+<ul>
+    <li><a href="#xblFeatures">XBL Features</a></li>
+    <li><a href="#xblElements">XBL Elements</a></li>
+    <li><a href="#browsers">Browser Support</a></li>
+</ul>
+
+<table id="xblFeatures">
+  <caption>XBL Features</caption>
+  <colgroup>
+    <col class="col1" />
+    <col class="col2" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th><span class="level1">Feature</span> | <span class="level2">Detail</span></th>
+      <th>Support</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Binding Aspects</td>
+      <td></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">Templates</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">Handlers</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">Implementations</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">Resources</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Binding Attachment</td>
+      <td> </td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2"><code>&lt;binding element=""/&gt;</code></td>
+      <td class="part"><label>Partial</label>
+      <small><ul>
+        <li>Attachment only occurs when the element first enters the document. Attached bindings don't get updated when attributes do.</li>
+      </ul></small>
+      </td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2"><code>binding</code> property in CSS</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2"><code>addBinding()</code> method in script</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Importing Binding Documents</td>
+      <td> </td>
+    </tr>
+    <tr>
+      <td class="level2"><code>&lt;?xbl href="bindings.xml"?&gt;</code></td>
+      <td class="almost"><label>Almost</label>
+      <small><ul>
+        <li>Only in the bound document - PI's aren't checked in binding documents. </li>
+        <li>Built-in binding documents may be imported, otherwise cross-site restrictions apply. </li>
+        <li>Most current browsers do not support PI's in HTML documents. </li>
+      </ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2"><code>&lt;link rel="bindings" href="bindings.xml" /&gt;</code></td>
+      <td class="yes"><label>Yes</label>
+      <small><ul>
+        <li>Non-standard</li>
+        <li>Built-in binding documents may be imported, otherwise cross-site restrictions apply.</li>
+      </ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2"><code>&lt;style type="application/xml"&gt;...&lt;/style&gt;</code></td>
+      <td class="yes"><label>Yes</label>
+      <small><ul>
+        <li>Non-standard</li>
+      </ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2"><code>loadBindingDocument()</code> in script</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+<table id="xblElements">
+  <caption>XBL Elements</caption>
+  <colgroup>
+    <col class="col1" />
+    <col class="col2" />
+    <col class="col3" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th><span class="level1">Element</span> | <span class="level2">Attribute</span> | <span class="level3">Value</span></th>
+      <th>Support</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>xbl</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">script-type</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">style-type</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>binding</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">extends</td>
+      <td class="yes"><label>Yes</label>
+      <small><ul><li>Built-in bindings may be extended. Otherwise cross-site restrictions apply.</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">element</td>
+      <td class="yes"><label>Yes</label>
+      <small><ul><li>Partial implementation of CSS2 &amp; CSS3 selectors.</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td>implementation</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">src</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>template</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">apply-author-sheets</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">allow-selectors-through</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>content</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">includes</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">apply-binding-sheets</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">locked</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>inherited</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">xbl:attr</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">xbl:pseudo</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">xbl:text</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>div</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">class</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">state</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">title</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>handlers</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>handler</td>
+      <td class="part"><label>Partial</label>
+      <small><ul><li>The handlers are added to the bound element, not to the handlers element.</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">event</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">phase</td>
+      <td class="almost"><label>Partial</label>
+      <small><ul>
+        <li>The default-action phase is not supported. </li>
+      </ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">trusted</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">propagate</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">default-action</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">button</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">click-count</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">modifiers</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">key</td>
+      <td class="part"><label>Partial</label>
+      <small><ul><li>
+      Supports a subset of key identifiers. Basically the typical non-text keys that seem to be consistent cross-platform. <br />
+      Delete, Backspace, Escape, Down, End, Enter, Home, Insert, Left, PageUp, PageDown, Right, Up, <br />
+      F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12<br />
+      Apart from these, key-strokes can be filtered by their Unicode identifier, U+0001, etc.
+      </li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">key-location</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">text</td>
+      <td class="part"><label>Partial</label>
+      <small><ul><li>textInput events are triggered by keypress.  Other event sources are not recognized</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">prev-value</td>
+      <td class="almost"><label>Almost</label>
+      <small><ul><li>Safari doesn't support DOMAttrModified</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">new-value</td>
+      <td class="almost"><label>Almost</label>
+      <small><ul><li>Safari doesn't support DOMAttrModified</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">attr-name</td>
+      <td class="almost"><label>Almost</label>
+      <small><ul><li>Safari doesn't support DOMAttrModified</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td class="level2">attr-change</td>
+      <td class="almost"><label>Almost</label>
+      <small><ul><li>Safari doesn't support DOMAttrModified</li></ul></small>
+      </td>
+    </tr>
+    <tr>
+      <td>resources</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>style</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">media</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">src</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>prefetch</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">src</td>
+      <td class="no">No</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>script</td>
+      <td class="almost">Almost</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td class="level2">src</td>
+      <td class="yes"><label>Yes</label>
+      <small><ul><li>Built-in script documents may be sourced, otherwise cross-site restrictions apply. </li></ul></small>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<br />
+
+<table id="browsers">
+  <caption>Browser support</caption>
+  <colgroup>
+    <col class="col1" />
+    <col class="col2" />
+    <col class="col3" />
+  </colgroup>
+  <thead>
+    <tr>
+      <th><span class="level1">Browser</span></th>
+      <th>Support</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>IE 6</td>
+      <td class="yes">Yes</td>
+    </tr>
+    <tr>
+      <td>Firefox 2</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Firefox 3</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Safari 2</td>
+      <td class="part">Partial</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Safari 3</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Opera 9.2</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>Opera 9.5</td>
+      <td class="yes">Yes</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>
