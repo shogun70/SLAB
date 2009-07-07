@@ -22,7 +22,7 @@ depend : .depend
 build : ${TARGETS}
 
 install: build
-	${URLINSTALL} ${INSTALL_FILES} ${pkglibexecdir}/
+	${INSTALL} ${INSTALL_FILES} ${pkglibexecdir}/
 
 clean : 
 	-rm ${TARGETS}

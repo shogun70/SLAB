@@ -22,9 +22,9 @@ clean:
 	-rm wrapper.html
 
 install: ${BUILD_TARGETS} ${RESOURCES}
-	${URLINSTALL} ${TARGETS} ${pkgdocdir}/
+	${INSTALL} ${TARGETS} ${pkgdocdir}/
 	for FILE in ${RESOURCES}; do \
-		${URLINSTALL} ${srcdir}/$${FILE} ${pkgdocdir}/;\
+		${INSTALL} ${srcdir}/$${FILE} ${pkgdocdir}/;\
 	done;
 
 ${BUILD_TARGETS}: ${builddir}/%.html : ${srcdir}/%.html ${builddir}/wrapper.html
