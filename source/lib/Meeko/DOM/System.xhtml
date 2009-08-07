@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<?xpl-require href="../ECMAScript5.xhtml"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
+<script type="text/html" src="../ECMAScript5.xhtml"></script>
 <script type="text/javascript">
 <![CDATA[
 
@@ -232,14 +232,6 @@ var DOMBinding = function(name) {
 	this.interfaces = [];
 	this.implementation = function(node) {};
 }
-DOMBinding.prototype.xblRequired = function(node) {
-	for (var n=this.interfaces.length, i=0; i<n; i++) {
-		var ifaceSpec = this.interfaces[i];
-		if (ifaceSpec.xblRequired && ifaceSpec.xblRequired(node)) return true;
-	}
-	if (this.baseBinding) return this.baseBinding.xblRequired(node);
-	else return false;
-}
 DOMBinding.prototype.attach = function(node) {
 	if (this.baseBinding) this.baseBinding.attach(node);
 	Object.copy(node, this.prototype); // TODO optimize
@@ -307,16 +299,6 @@ function lookupDOMBinding(node) {
 		else rule = rule._null || "";
 	}
 	return domSystem[rule];
-}
-var filterDOMBindings = {
-	acceptNode: function(node) {
-		var domBinding = lookupDOMBinding(node);
-		if (!domBinding) {
-			logger.warn("filterDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
-			return NodeFilter.FILTER_REJECT;
-		}
-		return (domBinding.xblRequired(node)) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-	}
 }
 function attachDOMBindings(node) {
 	var domBinding = lookupDOMBinding(node);
@@ -408,15 +390,15 @@ function __init() {
 			window.addEventListener("DOMNodeInserted", function(event) {
 				if (event.target.nodeType == 1) { // Node.ELEMENT_NODE) {
 logger.debug("DOMNodeInserted");
-					var localWalker = document._createTreeWalker(event.target, NodeFilter.SHOW_ELEMENT, filterDOMBindings, false);
-					localWalker.forEach(attachDOMBindings); // FIXME some elements will already have bindings applied
+					var localWalker = document._createTreeWalker(event.target, NodeFilter.SHOW_ELEMENT, null, false);
+					localWalker.forEach(function() {});
 				}
 			}, true);
-			domWalker = document._createTreeWalker(document.documentElement, NodeFilter.SHOW_ELEMENT, filterDOMBindings, false);
+			domWalker = document._createTreeWalker(document.documentElement, NodeFilter.SHOW_ELEMENT, null, false);
 			readyState = "loading";
 		case "loading":
 ;;;logger.debug("loading");
-			domWalker.forEach(attachDOMBindings);
+			domWalker.forEach(function() {});
 			// FIXME if document.readyState is updated while this thread is running then there could be a failure here.
 			switch (document.readyState) {
 				case "loaded": case "interactive": case "complete":
