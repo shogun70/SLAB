@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
-<?xpl-require href="../ECMAScript5.xhtml"?>
-<?xpl-require href="../DOM/System.xhtml"?>
-<?xpl-require href="../DOM/Core.xhtml"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
+<script type="text/html" src="../ECMAScript5.xhtml"></script>
+<script type="text/html" src="../DOM/System.xhtml"></script>
+<script type="text/html" src="../DOM/Core.xhtml"></script>
 <script type="text/javascript">
 <![CDATA[
 
@@ -909,32 +909,86 @@ DOMMutation.prototype.notify = function(type, node) {
 }}
 
 
-if (!document.addEventListener && document.attachEvent) {{ // EventBubbler is only required on IE
+if (!document.addEventListener && document.attachEvent) {{ // *Bubbler is only required on IE
 
-var EventBubbler = function(target) {
+var FocusBubbler = function(target) {
 	if (null == target) return null; // TODO throw ??
 	if (this == window) return arguments.callee.getInterface(target);
 	else arguments.callee.prototype.xblCreate.call(this, target);
 }
 
-EventBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLFormElement", EventBubbler);
-EventBubbler.xblRequired = function(node) { return true; }
-EventBubbler.prototype.xblCreate = function(target) {
+FocusBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLElement", FocusBubbler);
+FocusBubbler.prototype.xblCreate = function(target) {
 	this.target = target;
 	var bubbler = this;
-	this.eventBubbler_listener = function(srcEvent) {
+	this.focusBubbler_listener = function(srcEvent) {
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, false, true);
+		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+	}
+	target.attachEvent("onfocus", this.focusBubbler_listener);
+}
+
+FocusBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onfocus", this.focusBubbler_listener);
+	this.focusBubbler_listener = null;
+	this.target = null;
+}
+
+var ChangeBubbler = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+ChangeBubbler.interfaceLookup = {};
+ChangeBubbler.interfaceLookup["input"] = Meeko.stuff.domSystem.addImplementation("HTMLInputElement", ChangeBubbler);
+ChangeBubbler.interfaceLookup["select"] = Meeko.stuff.domSystem.addImplementation("HTMLSelectElement", ChangeBubbler);
+ChangeBubbler.getInterface = function(target) {
+	var tagName = target.tagName.toLowerCase();
+	var lookup = this.interfaceLookup[tagName];
+	return (lookup) ? lookup(target) : null;
+}
+
+ChangeBubbler.prototype.xblCreate = function(target) {
+	this.target = target;
+	var bubbler = this;
+	this.changeBubbler_listener = function(srcEvent) {
 		var event = document.createEvent("Event");
 		event.initEvent(srcEvent.type, true, true);
 		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
 	}
-	target.attachEvent("onsubmit", this.eventBubbler_listener);
-	target.attachEvent("onreset", this.eventBubbler_listener);
+	target.attachEvent("onchange", this.changeBubbler_listener);
 }
 
-EventBubbler.prototype.xblDestroy = function(target) {
-	target.detachEvent("onsubmit", this.eventBubbler_listener);
-	target.detachEvent("onreset", this.eventBubbler_listener);
-	this.eventBubbler_listener = null;
+ChangeBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onchange", this.changeBubbler_listener);
+	this.changeBubbler_listener = null;
+	this.target = null;
+}
+
+var SubmitBubbler = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+
+SubmitBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLFormElement", SubmitBubbler);
+SubmitBubbler.prototype.xblCreate = function(target) {
+	this.target = target;
+	var bubbler = this;
+	this.submitBubbler_listener = function(srcEvent) {
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, true, true);
+		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+	}
+	target.attachEvent("onsubmit", this.submitBubbler_listener);
+	target.attachEvent("onreset", this.submitBubbler_listener);
+}
+
+SubmitBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onsubmit", this.submitBubbler_listener);
+	target.detachEvent("onreset", this.submitBubbler_listener);
+	this.submitBubbler_listener = null;
 	this.target = null;
 }
 
