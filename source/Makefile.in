@@ -7,7 +7,6 @@ include @top_srcdir@/mk/gnu.bsdvars.mk
 .SUFFIXES : .html .xhtml .js .xml .xpl 
 
 TARGETS = SLAB.js
-INSTALL_FILES = SLAB.js
 
 # Rules
 all : build
@@ -21,8 +20,8 @@ depend : .depend
 	
 build : ${TARGETS}
 
-install: build
-	${INSTALL} ${INSTALL_FILES} ${pkglibexecdir}/
+install: ${TARGETS}
+	${INSTALL} ${.ALLSRC} ${pkglibexecdir}/
 
 clean : 
 	-rm ${TARGETS}
