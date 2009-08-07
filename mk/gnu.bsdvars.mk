@@ -1,6 +1,6 @@
 
 # Some BSD compatibility declarations
-.ALLSRC = $>
+.ALLSRC = $^
 .ARCHIVE = $!
 .IMPSRC = $<
 .MEMBER = $%
