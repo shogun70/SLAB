@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
-<?xpl-require href="../ECMAScript5.xhtml"?>
-<?xpl-require href="../DOM/System.xhtml"?>
 <html>
 <head>
+<script type="text/html" src="../ECMAScript5.xhtml"></script>
+<script type="text/html" src="../DOM/System.xhtml"></script>
 <script>
 <![CDATA[
 
@@ -116,63 +116,69 @@ DOMTokenList.prototype.xblDestroy = function() { // FIXME is this needed??
 DOMTokenList.prototype.item = function(index) {
 	return this._getTokens()[index];
 }
-DOMTokenList.prototype.has = function(token) {
-	var rex = /^\s*(\w+)\b/;
-	var tmp = this._getText();
-	var found = false;
-	while (/\w/.test(tmp)) {
-		tmp = tmp.replace(rex, function($0, $1) { if ($1 == token) found = true; return ""; });
-		if (found) return true;
-	}
-	return false;
+DOMTokenList.prototype.contains = function(token) {
+	var tokens = this._getTokens();
+	return (tokens.indexOf(token) >= 0) ? true : false;
 }
 DOMTokenList.prototype.add = function(token) {
-	if (this.has(token)) return;
+	if (this.contains(token)) return;
 	var text = this._getText();
-	if (/^\s*$/.test(text)) text = "" + token;
-	else text = text.replace(/\s*$/, " " + token);
+	var n = text.length;
+	if (n && text.substring(n-1,1) != " ") text += " " + token;
+	else text += token;
 	this._setText(text);
 }
 DOMTokenList.prototype.remove = function(token) {
 	var text = this._getText(), tmp = text, result = "";
 	var rex = /^(\s*)(\w+)\b(\s*)/;
-	var i = 0;
-	while (1) { // loop forever
+	var i = 0; // non-matching-token counter
+	var lastMatch = false;
+	result = text.replace(/(\s*)\b(\w+)\b/g, function($0, $1, $2) {
+		var tmp;
+		if ($2 == token) {
+			tmp = "";
+			lastMatch = true;
+		}
+		else {
+			tmp = (lastMatch) ? " " + $2 : $0; 
+			i++;
+			lastMatch = false;
+		}
+		return tmp;
+	});
+	if (lastMatch) result = result.replace(/\s*$/, "");
+	while (0) { // loop forever
 		var m = tmp.match(rex);
 		if (m[0] == tmp) { // at end
 			if (m[2] != token) {
-				i++;
 				result += m[0];
+				i++;
 			}
 			tmp = "";
 			break;
 		}
-		if (m[2] == token) {
+		if (m[2] == token) { // match
 			var offset = m[0].length - (i ? 1 : 0);
 			tmp = tmp.substring(offset);
 		}
 		else {
 			i++;
 			result += m[1] + m[2];
-			tmp = tmp.substring(m[1].length + m[2].length);
+			var offset = m[1].length + m[2].length;
+			tmp = tmp.substring(offset);
 		}
 	}
 	if (result == text) return;
 	this._setText(result);
 }
 DOMTokenList.prototype.toggle = function(token) {
-	if (this.has(token)) this.remove(token);
+	if (this.contains(token)) this.remove(token);
 	else this.add(token);		
 }
 DOMTokenList.prototype._getTokens = function() {
 	var text = this._getText();
 	if (!text) return [];
-	var strings = text.split(/\s+/);
-	var sorted = strings.sort();
-	for (var i=sorted.length-1; i>0; i--) {
-		if (sorted[i] == sorted[i-1]) sorted.splice(i);
-	}
-	return sorted;		
+	return text.split(/\s+/);
 }
 
 var NodeList = function() {}
