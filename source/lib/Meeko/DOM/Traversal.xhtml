@@ -262,9 +262,9 @@ var iter = document.createTreeWalker(document, NodeFilter.SHOW_ALL, null, false)
 if (!iter.forEach) {
 	document.__createTreeWalker = document.createTreeWalker;
 	document.createTreeWalker = function(root, whatToShow, filter, entityReferenceExpansion) {
-		// NOTE fix for Safari-3 which treats filter as an acceptNode() function
-		var _filter = function(node) { return arguments.callee.acceptNode(node); }
-		Object.copy(_filter, filter);
+		// NOTE _filter is a fix for Safari-3 which treats filter as an acceptNode() function
+		var _filter = filter;
+		if (filter && filter.acceptNode) _filter = (function(node) { return this.acceptNode(node); }).bind(filter);
 		var iter = this.__createTreeWalker(root, whatToShow, _filter, entityReferenceExpansion);
 		// NOTE and add forEach method
 		iter.forEach = TreeWalker.prototype.forEach;
@@ -279,9 +279,9 @@ var iter = document.createNodeIterator(document, NodeFilter.SHOW_ALL, null, fals
 if (!iter.forEach) {
 	document.__createNodeIterator = document.createNodeIterator;
 	document.createNodeIterator = function(root, whatToShow, filter, entityReferenceExpansion) {
-		// NOTE fix for Safari-3 which treats filter as an acceptNode() function
-		var _filter = function(node) { return arguments.callee.acceptNode(node); }
-		Object.copy(_filter, filter);
+		// NOTE _filter is a fix for Safari-3 which treats filter as an acceptNode() function
+		var _filter = filter;
+		if (filter && filter.acceptNode) _filter = (function(node) { return this.acceptNode(node); }).bind(filter);
 		var iter = this.__createNodeIterator(root, whatToShow, _filter, entityReferenceExpansion);
 		// NOTE and add forEach method
 		iter.forEach = NodeIterator.prototype.forEach;
