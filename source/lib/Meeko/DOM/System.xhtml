@@ -218,8 +218,6 @@ function restore(node, fields) {
 	}
 }
 
-var incompleteBindings = []; // domBindings with xblReadyState() != "complete"
-
 /*
  DOMBinding is a ClassFactory for dom-binding classes. Usage:
    var HTMLElement = new DOMBinding("HTMLElement");
@@ -240,7 +238,6 @@ DOMBinding.prototype.attach = function(node) {
 		var ifaceSpec = this.interfaces[i];
 		var iface = new ifaceSpec(node);
 		internal[i] = iface;
-		if (iface.xblReadyState && iface.xblReadyState() != "complete") incompleteBindings.push(iface);
 	}
 	var ifName = "_" + this.name;
 	nodeManager.getStorage(node)[ifName] = internal;
@@ -367,9 +364,12 @@ function _init() {
 		logger.warn("domSystem initialization requested after complete");
 		return;
 	}
+	
 	_initializing = true;
 	try { __init(); }
-	catch(error) { logger.error(error.message); }
+	catch(error) {
+		logger.error(error.message);
+	}
 	_initializing = false;	
 }
 
@@ -384,21 +384,12 @@ function manualInit() {
 function __init() {
 	MAIN: switch (readyState) { // NOTE all these branches can fall-thru when they result in a state transition
 		case "uninitialized":
-;;;logger.debug("initializing");
+			;;;logger.debug("initializing");
 			attachDOMBindings(window); // force attach
 			attachDOMBindings(document); // force attach
-			window.addEventListener("DOMNodeInserted", function(event) {
-				if (event.target.nodeType == 1) { // Node.ELEMENT_NODE) {
-logger.debug("DOMNodeInserted");
-					var localWalker = document._createTreeWalker(event.target, NodeFilter.SHOW_ELEMENT, null, false);
-					localWalker.forEach(function() {});
-				}
-			}, true);
-			domWalker = document._createTreeWalker(document.documentElement, NodeFilter.SHOW_ELEMENT, null, false);
 			readyState = "loading";
 		case "loading":
-;;;logger.debug("loading");
-			domWalker.forEach(function() {});
+			;;;logger.debug("loading");
 			// FIXME if document.readyState is updated while this thread is running then there could be a failure here.
 			switch (document.readyState) {
 				case "loaded": case "interactive": case "complete":
@@ -411,22 +402,17 @@ logger.debug("DOMNodeInserted");
 				default: break MAIN;
 			}
 		case "loaded":
-;;;logger.debug("loaded");
-			for (var i=incompleteBindings.length-1; i>=0; i--) {
-				if ("complete" == incompleteBindings[i].xblReadyState()) incompleteBindings.splice(i,1);
-			}
-			if (incompleteBindings.length) break MAIN;
+			if (document.readyState != "complete") break MAIN;
 			readyState = "complete";
-;;;logger.debug("complete");
 	}
-	
+
 	// NOTE it is an error if we don't get to this point
-	logger.debug("Dispatching compat progress event");
+	;;;logger.debug("Dispatching compat progress event");
 	var event = document.createEvent("Event");
 	event.initEvent("progress", true, true);
 	document.dispatchEvent(event);
 	if (readyState == "complete") {
-		logger.debug("Dispatching compat load event");
+		;;;logger.debug("Dispatching compat load event");
 		var event = document.createEvent("Event");
 		event.initEvent("load", true, true);
 		document.dispatchEvent(event);
