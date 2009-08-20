@@ -43,11 +43,6 @@ for (var i=0; i<=15; i++) {
 }
 
 var AppleWebKit = (/AppleWebKit/.test(navigator.userAgent)) ? Number(navigator.userAgent.match(/AppleWebKit\/([0-9]+\.[0-9]+)/)[1]) : null;
-var safari2bouncyKeys;
-if (AppleWebKit && AppleWebKit < 500) {
-	safari2bouncyKeys = Object.copy({}, w3cKeyIdentifiers);
-	delete safari2bouncyKeys["U+0008"];	
-}
 
 var EventState = function() {}
 // These states are set by the EventSystem, so won't be valid for general use
@@ -56,7 +51,7 @@ EventState.PROPAGATION_STOPPED = 0x02;
 EventState.FAKE_EVENT = 0x04;
 EventState.COMPATIBILITY_EVENT = 0x08;
 EventState.FIXED_WINDOW_CAPTURING = 0x10;
-EventState.FIXED_WINDOW_BUBBLING = 0x10;
+EventState.FIXED_WINDOW_BUBBLING = 0x20;
 
 var EventSystem = function() {
 	var eventSystem = this;
@@ -77,7 +72,7 @@ EventSystem.prototype.handleEvent = function(event, currentTarget) {
 	var target = currentTarget || event.currentTarget;
 	var eventTarget = EventTarget(target);
 	var rc = (eventTarget) ? eventTarget.handleEvent(event) : null;
-	logger.debug((event.eventStatus & EventState.FAKE_EVENT ? "Compatibility" : "Browser") + " " + event.type + " event received" + (target == window ? " on window" : "") +
+	;;;logger.debug((event.eventStatus & EventState.FAKE_EVENT ? "Compatibility" : "Browser") + " " + event.type + " event received" + (target == window ? " on window" : "") +
 		" during " + (event.eventPhase == 1 ? "capture" : "bubbling") + " phase" + (eventTarget ? " and forwarded" : ""));
 	return rc;
 }
@@ -132,29 +127,19 @@ EventSystem.handlers = { // these handlers must always be called as handler.call
 		var n = hist.length;
 		var prev = (n) ? hist[n-1] : null;
 		var repeat = 0;
-		var delta = 1;
-		if (safari2bouncyKeys && keyId in safari2bouncyKeys) { // TODO refactor
-			repeat = -0.5;
-			delta = 0.5;
-		}
-		if (prev && prev.type == "keydown") repeat = prev.repeat + delta;
-		else if (prev && prev.type == "keypress") repeat = prev.repeat + delta;
+		var delta = 1; // legacy from Safari-2
+		repeat = prev ? prev.repeat : 0;
+		repeat += delta;
 		event.repeat = repeat;
 		hist.push(Object.copy({ type: "keydown", repeat: repeat }, event, keyEventFields));
-		if (event.eventStatus & EventState.DEFAULT_PREVENTED) event.preventDefault(); // signal from keypress
-		if (repeat % 1) { // ignore bouncy key registrations
-			event.stopPropagation();
-		}
-		else {
-			this.handleEvent(event, current);
-		}		
+		this.handleEvent(event, current);
 	},
 	"keypress": function(event) {
-		event.stopPropagation(); // NOTE there are no keypress events in DOM3 Events
+// FIXME		event.stopPropagation(); // NOTE there are no keypress events in DOM3 Events
 		var keyId;
 		if (event.keyIdentifier) keyId = event.keyIdentifier;
 		else {
-			keyId = keyIdentifiersByCode[event.charCode]; // FIXME
+			keyId = keyIdentifiersByCode[event.keyCode || event.charCode]; // FIXME
 			event.keyIdentifier = keyId;
 		}
 		var hist = this.keyEventHistory;
@@ -162,10 +147,6 @@ EventSystem.handlers = { // these handlers must always be called as handler.call
 		var prev = (n) ? hist[n-1] : null;
 		var repeat = 0;
 		var delta = 1;
-		if (safari2bouncyKeys && keyId in safari2bouncyKeys) { // TODO refactor
-			repeat = -0.5;
-			delta = 0.5;
-		}
 		if (prev && prev.type == "keydown") repeat = prev.repeat;
 		else if (prev && prev.type == "keypress") repeat = prev.repeat + delta;
 		
@@ -223,7 +204,7 @@ EventSystem.handlers = { // these handlers must always be called as handler.call
 			var name = xplParams[i];
 			eventArgs[i] = event[name];
 		}
-		eventArgs[n-1] = -40 * event.detail; // FIXME is this valid?
+		eventArgs[n-1] = -40 * event.detail; // FIXME is this valid and cross-platform??
 		newEvent.initMouseWheelEvent.apply(newEvent, eventArgs);
 		return event.target.dispatchEvent(newEvent);
 	}
@@ -642,7 +623,7 @@ GenericEventTarget.prototype.handleEvent = function(event) {
 			else return listener(event);
 		}
 		catch (error) {
-			logger.error("Error in event listener: " + error);
+			logger.error("Error in event listener: " + error.message);
 			return;
 		}
 	}
@@ -718,14 +699,14 @@ EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window
 EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
 	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
-		if (!EventSystem.handlers[type]) this.target._addEventListener(type, this.eventListener, useCapture);
+		if (this.target != window || !EventSystem.handlers[type]) this.target._addEventListener(type, this.eventListener, useCapture);
 	}
 	this.baseBinding.addEventListener(type, listener, useCapture);
 }
 EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
 	this.baseBinding.removeEventListener(type, listener, useCapture);
 	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
-		if (!EventSystem.handlers[type]) this.target._removeEventListener(type, this.eventListener, useCapture);
+		if (this.target != window || !EventSystem.handlers[type]) this.target._removeEventListener(type, this.eventListener, useCapture);
 	}
 }
 EventTarget.prototype.dispatchEvent = function(event) { // FIXME this assumes that EventTarget is only attached to window or document
@@ -859,6 +840,7 @@ DOMMutation.prototype.cloneNode = function(deep) {
 		clone = clone.firstChild;
 	}
 	clone.parentNode.removeChild(clone);
+	frag = null;
 	return clone;
 }
 
