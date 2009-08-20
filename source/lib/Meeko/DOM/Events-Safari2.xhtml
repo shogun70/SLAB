@@ -1,0 +1,1017 @@
+<?xml version="1.0"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script type="text/html" src="../ECMAScript5.xhtml"></script>
+<script type="text/html" src="../DOM/System.xhtml"></script>
+<script type="text/html" src="../DOM/Core.xhtml"></script>
+<script type="text/javascript">
+<![CDATA[
+
+// FIXME refactor - this package has its fingers in everywhere and has back-doors for everything. Seriously yukky.
+// FIXME confirm that preventDefault & stopPropagation actually work
+
+Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.Events");
+Meeko.DOM.Events = (function() {
+
+var privateKey = Math.random();
+
+var eventModules = [ "Event", "CustomEvent", "UIEvent", "TextEvent", "KeyboardEvent", "MouseEvent", "MouseWheelEvent", "MouseMultiWheelEvent", "MutationEvent", "MutationNameEvent" ];
+
+var w3cKeyIdentifiers = {
+	"U+007F": 46, // Delete
+	"U+0008": 8, // Backspace
+	"U+001B": 27, // Escape
+	Down: 40, End: 35, Enter: 13, Home: 36, Insert: 45,
+	Left: 37, PageUp: 33, PageDown: 34, Right: 39, Up: 38,
+	F1: 112, F2: 113, F3: 114, F4: 115, F5: 116, F6: 117, F7: 118, F8: 119, F9: 120, F10: 121, F11: 122, F12: 123
+}
+
+var keyIdentifiersByCode = {};
+for (var keyId in w3cKeyIdentifiers) {
+	var code = w3cKeyIdentifiers[keyId];
+	keyIdentifiersByCode[code] = keyId;
+}
+
+var toHexDigit = "0123456789ABCDEF".split(/\s*/);
+for (var i=0; i<=15; i++) {
+	for (var j=0; j<=15; j++) {
+		var hex = "" + toHexDigit[i] + toHexDigit[j];
+		var code = Number("0x"+hex);
+		var keyId = "U+00" + hex;
+		if (!keyIdentifiersByCode[code]) keyIdentifiersByCode[code] = keyId;		
+	}
+}
+
+var AppleWebKit = (/AppleWebKit/.test(navigator.userAgent)) ? Number(navigator.userAgent.match(/AppleWebKit\/([0-9]+\.[0-9]+)/)[1]) : null;
+var safari2bouncyKeys;
+if (AppleWebKit && AppleWebKit < 500) {
+	safari2bouncyKeys = Object.copy({}, w3cKeyIdentifiers);
+	delete safari2bouncyKeys["U+0008"];	
+}
+
+var EventState = function() {}
+// These states are set by the EventSystem, so won't be valid for general use
+EventState.DEFAULT_PREVENTED = 0x01; 
+EventState.PROPAGATION_STOPPED = 0x02;
+EventState.FAKE_EVENT = 0x04;
+EventState.COMPATIBILITY_EVENT = 0x08;
+EventState.FIXED_WINDOW_CAPTURING = 0x10;
+EventState.FIXED_WINDOW_BUBBLING = 0x10;
+
+var EventSystem = function() {
+	var eventSystem = this;
+	this.registeredEvents = {};
+	this.keyEventHistory = [];
+	if (window.addEventListener) {
+		for (var type in EventSystem.handlers) (function(system, evType, handlers) {
+			window.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, true);
+		})(this, type, EventSystem.handlers);
+		for (var type in {"DOMContentLoaded": true, "load": true}) (function(system, evType, handlers) {
+			document.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, true);
+			document.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, false);
+		})(this, type, EventSystem.handlers);
+	}
+}
+
+EventSystem.prototype.handleEvent = function(event, currentTarget) {
+	var target = currentTarget || event.currentTarget;
+	var eventTarget = EventTarget(target);
+	var rc = (eventTarget) ? eventTarget.handleEvent(event) : null;
+	logger.debug((event.eventStatus & EventState.FAKE_EVENT ? "Compatibility" : "Browser") + " " + event.type + " event received" + (target == window ? " on window" : "") +
+		" during " + (event.eventPhase == 1 ? "capture" : "bubbling") + " phase" + (eventTarget ? " and forwarded" : ""));
+	return rc;
+}
+// FIXME the key-event handling is all a bit dodgy, relying on faked events and handling those properly
+var keyEventFields = [ "type", "keyCode", "charCode", "keyIdentifier" ];
+EventSystem.handlers = { // these handlers must always be called as handler.call(eventSystem, event)
+	"load": function(event) {
+		if (event.eventStatus & EventState.FAKE_EVENT) { // only let fake events thru
+			if (event.eventPhase == 1) { // CAPTURE
+				if (!(event.eventStatus & EventState.FIXED_WINDOW_CAPTURING)) { // re-route thru window unless already done
+					this.handleEvent(event, window);
+					event.eventStatus |= EventState.FIXED_WINDOW_CAPTURING;
+				}
+				var current = event.currentTarget || window;
+				if (current != window) this.handleEvent(event, current);
+			}
+			else { // TARGET or BUBBLING
+				var current = event.currentTarget || window;
+				if (current != window) this.handleEvent(event, current);
+				if (!(event.eventStatus & EventState.FIXED_WINDOW_BUBBING)) { // re-route thru window unless already done
+					this.handleEvent(event, window);
+					event.eventStatus |= EventState.FIXED_WINDOW_BUBBLING;
+				}
+			}
+		}
+		else {
+			logger.debug("Browser load event received and blocked.");
+			event.stopPropagation();				
+		}
+		return false;
+	},
+	"DOMContentLoaded": function(event) {
+		if (event.eventStatus & EventState.FAKE_EVENT) { // only let fake events thru
+			var current = event.currentTarget || window;
+			this.handleEvent(event, current);
+		}
+		else {
+			logger.debug("Browser DOMContentLoaded event received and blocked.");
+			event.stopPropagation();				
+		}
+		return false;
+	},
+	"keydown": function(event) {
+		var current = event.currentTarget || window;
+		var keyId;
+		if (event.keyIdentifier) keyId = event.keyIdentifier;
+		else {
+			keyId = keyIdentifiersByCode[event.keyCode || event.charCode]; // FIXME
+			event.keyIdentifier = keyId;
+		}
+		var hist = this.keyEventHistory;
+		var n = hist.length;
+		var prev = (n) ? hist[n-1] : null;
+		var repeat = 0;
+		var delta = 1;
+		if (safari2bouncyKeys && keyId in safari2bouncyKeys) { // TODO refactor
+			repeat = -0.5;
+			delta = 0.5;
+		}
+		if (prev && prev.type == "keydown") repeat = prev.repeat + delta;
+		else if (prev && prev.type == "keypress") repeat = prev.repeat + delta;
+		event.repeat = repeat;
+		hist.push(Object.copy({ type: "keydown", repeat: repeat }, event, keyEventFields));
+		if (event.eventStatus & EventState.DEFAULT_PREVENTED) event.preventDefault(); // signal from keypress
+		if (repeat % 1) { // ignore bouncy key registrations
+			event.stopPropagation();
+		}
+		else {
+			this.handleEvent(event, current);
+		}		
+	},
+	"keypress": function(event) {
+		event.stopPropagation(); // NOTE there are no keypress events in DOM3 Events
+		var keyId;
+		if (event.keyIdentifier) keyId = event.keyIdentifier;
+		else {
+			keyId = keyIdentifiersByCode[event.charCode]; // FIXME
+			event.keyIdentifier = keyId;
+		}
+		var hist = this.keyEventHistory;
+		var n = hist.length;
+		var prev = (n) ? hist[n-1] : null;
+		var repeat = 0;
+		var delta = 1;
+		if (safari2bouncyKeys && keyId in safari2bouncyKeys) { // TODO refactor
+			repeat = -0.5;
+			delta = 0.5;
+		}
+		if (prev && prev.type == "keydown") repeat = prev.repeat;
+		else if (prev && prev.type == "keypress") repeat = prev.repeat + delta;
+		
+		if (!(prev && prev.type == "keydown")) {
+			var newEvent = document.createEvent("KeyboardEvent");
+			newEvent.initKeyboardEvent("keydown", true, true, window, keyId, 0, "");						
+			newEvent.eventStatus = 0x01 | 0x04 | 0x08; // DEFAULT_PREVENTED | FAKE_EVENT | COMPATIBILITY_EVENT: signal to keypress handler to prevent default
+			event.target.dispatchEvent(newEvent);
+		}
+		hist.push(Object.copy({ type: "keypress", repeat: repeat }, event, keyEventFields));
+//		if (!(keyId in w3cKeyIdentifiers)) { 
+		if (event.charCode && !(event.metaKey || event.altKey || event.ctrlKey)) { // FIXME is this comprehensive?? 
+			if (!AppleWebKit || AppleWebKit < 500) { // FIXME won't work when other browsers implement textInput events
+				var newEvent = document.createEvent("TextEvent");
+				newEvent.initTextEvent("textInput", true, true, window, String.fromCharCode(event.charCode)); // FIXME
+				event.target.dispatchEvent(newEvent);
+				if (newEvent.eventStatus & EventState.DEFAULT_PREVENTED) event.preventDefault();
+			}
+		}
+	},
+	"textInput": function(event) { // TODO should stopPropagation on browser textInput events
+		var current = event.currentTarget || window;
+		var hist = this.keyEventHistory;
+		var n = hist.length;
+		var prev = (n) ? hist[n-1] : null;
+		if (prev && prev.type == "keydown") {
+			this.handleEvent(event, current);
+			hist.push(Object.copy({ type: "textInput" }, event, keyEventFields));
+		}			
+	},
+	"keyup": function(event) {
+		var current = event.currentTarget || window;
+		var keyId;
+		if (event.keyIdentifier) keyId = event.keyIdentifier;
+		else {
+			keyId = keyIdentifiersByCode[event.keyCode];
+			event.keyIdentifier = keyId;
+		}
+		var hist = this.keyEventHistory;
+		var n = hist.length;
+		var prev = hist[n-1];
+		if (prev && (prev.type != "keyup" || prev.keyIdentifier != keyId)) {
+			hist.push(Object.copy({ type: "keyup" }, event, keyEventFields));
+			this.handleEvent(event, current);
+		}			
+	},
+	"DOMMouseScroll": function(event) {
+		event.stopPropagation(); // NOTE no DOMMouseScroll events in DOM3 spec
+		var newEvent = document.createEvent("MouseWheelEvent");
+		var xplParams = [ "type", "bubbles", "cancelable", "view", "detail", "screenX", "screenY", "clientX", "clientY", "ctrlKey", "altKey", "shiftKey", "metaKey", "button", "relatedTarget", "wheelDelta" ]
+		var n=xplParams.length;
+		var eventArgs = [];
+		eventArgs[0] = "mousewheel";
+		for (var i=1; i<n-1; i++) {
+			var name = xplParams[i];
+			eventArgs[i] = event[name];
+		}
+		eventArgs[n-1] = -40 * event.detail; // FIXME is this valid?
+		newEvent.initMouseWheelEvent.apply(newEvent, eventArgs);
+		return event.target.dispatchEvent(newEvent);
+	}
+}
+
+var eventSystem = new EventSystem;
+
+
+EventSystem.prototype.registerEvent = function(type) {
+	if (this.registeredEvents[type]) return;
+	var systemListener = function(srcEvent) { // FIXME not sending w3c event
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, srcEvent.bubbles, srcEvent.cancelable);
+		Object.copy(event, srcEvent);
+		eventSystem.dispatchEvent(srcEvent.srcElement, event);
+		return event.returnValue;
+	}
+
+	var ieLookup = { // FIXME ensure all standard event properties are copied / created
+		"DOMAttrModified": function() { // FIXME handled in addEventListener for now
+		},
+		"DOMActivate": { type: "activate", bubbles: true, cancelable: true },
+		"DOMFocusIn": { type: "focusin", bubbles: true, cancelable: false },
+		"DOMFocusOut": { type: "focusout", bubbles: true, cancelable: false },
+		"keydown": function() {
+			document.attachEvent("onkeydown", function(srcEvent) {
+				var event = document.createEvent("UIEvent");
+				event.initEvent("keydown", true, true);
+				event.keyCode = srcEvent.keyCode;
+				event.keyIdentifier = keyIdentifiersByCode[srcEvent.keyCode];
+				event.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+				return event.returnValue;
+			});
+		},
+		"keyup": function() {
+			document.attachEvent("onkeyup", function(srcEvent) {
+				var event = document.createEvent("UIEvent");
+				event.initEvent("keyup", true, true);
+				event.keyCode = srcEvent.keyCode;
+				event.keyIdentifier = keyIdentifiersByCode[srcEvent.keyCode];
+				event.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+				return event.returnValue;
+			});
+		},
+		"textInput": function() {
+			document.attachEvent("onkeypress", function(srcEvent) {
+				var event = document.createEvent("UIEvent");
+				event.initEvent("textInput", true, true);
+				event.data = String.fromCharCode(srcEvent.keyCode);
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		},
+		"focus": function() {
+			document.attachEvent("onfocusin", function(srcEvent) {
+				var event = document.createEvent("UIEvent");
+				event.initEvent("focus", false, false);
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		},
+		"blur": function() {
+			document.attachEvent("onfocusout", function(srcEvent) {
+				var event = document.createEvent("UIEvent");
+				event.initEvent("blur", false, false);
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		},
+		"mouseover": function() {
+			document.attachEvent("onmouseover", function(srcEvent) {
+				var event = document.createEvent("MouseEvent");
+				MouseEvent.copyMouseEvent(event, srcEvent);
+				event.relatedTarget = srcEvent.fromElement;
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+				event.relatedTarget = null;
+			});
+		},
+		"mouseout": function() {
+			document.attachEvent("onmouseout", function(srcEvent) {
+				var event = document.createEvent("MouseEvent");
+				MouseEvent.copyMouseEvent(event, srcEvent);
+				event.relatedTarget = srcEvent.toElement;
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+				event.relatedTarget = null;
+			});
+		},
+		"click": function() {
+			document.attachEvent("onclick", function(srcEvent) {
+				var event = document.createEvent("MouseEvent");
+				MouseEvent.copyMouseEvent(event, srcEvent);
+				event.button = ([ null, 0, 2, null, 1 ])[srcEvent.button];
+				event.detail = 1; // FIXME
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		},
+		"dblclick": function() {
+			document.attachEvent("ondblclick", function(srcEvent) {
+				var event = document.createEvent("MouseEvent");
+				MouseEvent.copyMouseEvent(event, srcEvent);
+				event.button = ([ null, 0, 2, null, 1 ])[srcEvent.button];
+				event.detail = 2; // FIXME
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		},
+		"mousewheel": function() {
+			document.attachEvent("onmousewheel", function(srcEvent) {
+				var event = document.createEvent("MouseWheelEvent");
+				MouseWheelEvent.copyMouseWheelEvent(event, srcEvent);
+				srcEvent.returnValue = eventSystem.dispatchEvent(srcEvent.srcElement, event);
+			});
+		}
+	}
+
+	var rego = ieLookup[type] || { type: type, bubbles: true, cancelable: true};
+
+	if (typeof rego == "function") rego();
+	else document.attachEvent("on"+rego.type, systemListener);
+	this.registeredEvents[type] = true;
+}
+
+EventSystem.prototype.dispatchEvent = function(target, event) {
+	this._dispatchEvent(target, event);
+	event.currentTarget = null;
+	event.target = null;
+	return event.returnValue;
+}
+
+EventSystem.prototype._dispatchEvent = function(target, event) {
+	event.target = target;
+	var path = [];
+	var current = target;
+	if (target != window) {
+		for (current=target; current!=document; current=current.parentNode) { // FIXME will fail for document fragments, etc
+			path.push(current);
+		}
+		path.push(document);
+	}
+	path.push(window);
+
+	function dispatch(current, event) {
+		event.currentTarget = current;
+		var eventTarget = EventTarget(current);
+		if (eventTarget) eventTarget.handleEvent(event);		
+	}
+	
+	event.eventPhase = Event.CAPTURING_PHASE;
+	
+	for (var n=path.length, i=n-1; i>0; i--) {
+		dispatch(path[i], event);
+		if (event.cancelBubble) return event.returnValue; 
+	}
+
+	event.eventPhase = Event.AT_TARGET;
+	dispatch(path[0], event);
+	if (event.cancelBubble) return event.returnValue;
+
+	if (!event.bubbles) return event.returnValue;
+
+	event.eventPhase = Event.BUBBLING_PHASE;
+	for (var n=path.length, i=1; i<n; i++) {
+		dispatch(path[i], event);
+		if (event.cancelBubble) return event.returnValue; 
+	}
+	
+	return event.returnValue;	
+}
+
+var Event = function(key) {
+	if (key != privateKey) throw "Event is not a constructor";
+};
+Event.CAPTURING_PHASE = 1;
+Event.AT_TARGET = 2;
+Event.BUBBLING_PHASE = 3;
+Event.prototype.initEvent = function(type, bubbles, cancelable) { // TODO check that event.type is appropriate for event-module
+	this.eventStatus = 0;
+	this.timeStamp = Number(new Date);
+	this.type = type;
+	this.bubbles = Boolean(bubbles);
+	this.cancelable = Boolean(cancelable);
+}
+
+Event.prototype.preventDefault = function() { this.eventStatus |= EventState.DEFAULT_PREVENTED; }
+Event.prototype.stopPropagation = function() { this.eventStatus |= EventState.PROPAGATION_STOPPED; }
+
+
+var CustomEvent = function(key) {
+	if (key != privateKey) throw "CustomEvent is not a constructor";
+};
+CustomEvent.prototype = new Event(privateKey);
+CustomEvent.prototype.initCustomEvent = function(type, bubbles, cancelable, detail) {
+	this.initEvent(type, bubbles, cancelable);
+	this.detail = detail;
+}
+
+var UIEvent = function(key) {
+	if (key != privateKey) throw "UIEvent is not a constructor";
+};
+UIEvent.prototype = new Event(privateKey);
+UIEvent.prototype.initUIEvent = function(type, bubbles, cancelable, view, detail) {
+	this.initEvent(type, bubbles, cancelable);
+	this.view = view;
+	this.detail = detail;
+}
+
+var TextEvent = function(key) {
+	if (key != privateKey) throw "TextEvent is not a constructor";
+};
+TextEvent.prototype = new UIEvent(privateKey);
+TextEvent.DOM_KEY_LOCATION_STANDARD = 0x00;
+TextEvent.DOM_KEY_LOCATION_LEFT = 0x01;
+TextEvent.DOM_KEY_LOCATION_RIGHT = 0x02;
+TextEvent.DOM_KEY_LOCATION_NUMPAD = 0x03;
+TextEvent.prototype.initTextEvent = function(type, bubbles, cancelable, view, data) {
+	this.initUIEvent(type, bubbles, cancelable, view, 0);
+	this.data = data;
+}
+
+var KeyboardEvent = function(key) {
+	if (key != privateKey) throw "KeyboardEvent is not a constructor";
+};
+KeyboardEvent.prototype = new UIEvent(privateKey);
+KeyboardEvent.DOM_KEY_LOCATION_STANDARD = 0x00;
+KeyboardEvent.DOM_KEY_LOCATION_LEFT = 0x01;
+KeyboardEvent.DOM_KEY_LOCATION_RIGHT = 0x02;
+KeyboardEvent.DOM_KEY_LOCATION_NUMPAD = 0x03;
+KeyboardEvent.prototype.initKeyboardEvent = function(type, bubbles, cancelable, view, keyIdentifier, keyLocation, modifierList) {
+	this.initUIEvent(type, bubbles, cancelable, view, 0);
+	this.keyIdentifier = keyIdentifier;
+	this.keyLocation = keyLocation;
+	this._modifiers = modifierList.split(" ");
+	for (var n=this._modifiers.length, i=0; i<n; i++) {
+		switch (this._modifiers[i]) {
+			case "Alt": this.altKey = true; break;
+			case "Control": this.ctrlKey = true; break;
+			case "Meta": this.metaKey = true; break;
+			case "Shift": this.shiftKey = true; break;
+		}
+	}
+}
+KeyboardEvent.prototype.getModifierState = function(keyIdentifier) {
+	for (var n=this._modifiers.length, i=0; i<n; i++) {
+		if (keyIdentifier == this._modifiers[i]) return true;
+	}
+	return false;
+}
+
+var MouseEvent = function(key) {
+	if (key != privateKey) throw "MouseEvent is not a constructor";
+};
+MouseEvent.prototype = new UIEvent(privateKey);
+MouseEvent.initArgs = [ "type", "bubbles", "cancelable", "view", "detail", "screenX", "screenY", "clientX", "clientY", "ctrlKey", "altKey", "shiftKey", "metaKey", "button", "relatedTarget" ];
+MouseEvent.copyMouseEvent = function(dst, src) {
+	var xplParams = MouseEvent.initArgs;
+	var n = xplParams.length;
+	var bubbles = (null != src.bubbles) ? src.bubbles : "true";
+	var cancelable = (null != src.cancelable) ? src.cancelable : "true";
+	var view = (null != src.view) ? src.view : window; // FIXME is this right?
+	dst.initUIEvent(src.type, bubbles, cancelable, view, src.detail);
+	for (var i=5; i<n; i++) {
+		var name = xplParams[i];
+		dst[name] = src[name];
+	}
+}
+MouseEvent.prototype.initMouseEvent = function(type, bubbles, cancelable, view, detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, relatedTarget) {
+	var xplParams = MouseEvent.initArgs;
+	var n = xplParams.length;
+	if (arguments.length < n) throw "Improper argument list in call to initMouseEvent";
+	this.initUIEvent(type, bubbles, cancelable, view, detail);
+	for (var i=5; i<n; i++) {
+		var name = xplParams[i];
+		this[name] = arguments[i];
+	}
+}
+
+var MouseWheelEvent = function(key) {
+	if (key != privateKey) throw "MouseWheelEvent is not a constructor";
+};
+MouseWheelEvent.initArgs = [ "type", "bubbles", "cancelable", "view", "detail", "screenX", "screenY", "clientX", "clientY", "ctrlKey", "altKey", "shiftKey", "metaKey", "button", "relatedTarget", "wheelDelta" ];
+MouseWheelEvent.copyMouseWheelEvent = function(dst, src) {
+	var xplParams = MouseWheelEvent.initArgs;
+	var n = xplParams.length;
+	var bubbles = (null != src.bubbles) ? src.bubbles : "true";
+	var cancelable = (null != src.cancelable) ? src.cancelable : "true";
+	var view = (null != src.view) ? src.view : window; // FIXME is this right?
+	dst.initUIEvent(src.type, bubbles, cancelable, view, src.detail);
+	for (var i=5; i<n; i++) {
+		var name = xplParams[i];
+		dst[name] = src[name];
+	}
+}
+MouseWheelEvent.prototype = new MouseEvent(privateKey);
+MouseWheelEvent.prototype.initMouseWheelEvent = function(type, bubbles, cancelable, view, detail, screenX, screenY, clientX, clientY, ctrlKey, altKey, shiftKey, metaKey, button, relatedTarget, wheelDelta) {
+	var xplParams = MouseWheelEvent.initArgs;
+	var n = xplParams.length;
+	if (arguments.length < n) throw "Improper argument list in call to initMouseWheelEvent"; // FIXME
+	this.initUIEvent(type, bubbles, cancelable, view, detail);
+	for (var i=5; i<n; i++) {
+		var name = xplParams[i];
+		this[name] = arguments[i];
+	}
+}
+
+var MutationEvent = function(key) {
+	if (key != privateKey) throw "MutationEvent is not a constructor";
+};
+MutationEvent.MODIFICATION = 1;
+MutationEvent.ADDITION = 2;
+MutationEvent.REMOVAL = 3;
+MutationEvent.prototype = new Event(privateKey);
+MutationEvent.prototype.initMutationEvent = function(type, bubbles, cancelable) {
+	var xplParams = [ "type", "bubbles", "cancelable", "relatedNode", "prevValue", "newValue", "attrName", "attrChange" ]
+	var n = xplParams.length;
+	// if (arguments.length < n) throw "Improper argument list in call to initMutationEvent"; // FIXME
+	this.initEvent(type, bubbles, cancelable);
+	for (var i=3; i<n; i++) {
+		var name = xplParams[i];
+		this[name] = arguments[i];
+	}
+}
+
+
+var eventTemplates = {
+	Event: new Event(privateKey),
+	CustomEvent: new CustomEvent(privateKey),
+	UIEvent: new UIEvent(privateKey),
+	TextEvent: new TextEvent(privateKey),
+	KeyboardEvent: new KeyboardEvent(privateKey),
+	MouseEvent: new MouseEvent(privateKey),
+	MouseWheelEvent: new MouseWheelEvent(privateKey),
+	MutationEvent: new MutationEvent(privateKey)	
+}
+
+var eventModuleMap = {
+	"Events": "Event",
+	"HTMLEvents": "Event",
+	"UIEvents": "UIEvent",
+	"MouseEvents": "MouseEvent",
+	"MutationEvents": "MutationEvent"
+}
+
+
+var DocumentEvent = function() {} // TODO Document.addImplementation(DocumentEvent);
+if (document.createEvent) {{ // Upgrade if less than DOM3
+
+DocumentEvent.prototype.createEvent = function(module) {
+	var dom3Module = eventModuleMap[module] || module;
+	var tmp = eventTemplates[dom3Module];
+	if (!tmp) throw "Invalid event module: " + module;
+	var event;
+	var modules = [ dom3Module, module, "Event", "HTMLEvents" ];
+	for (var n=modules.length, i=0; i<n; i++) {
+		try { event = document._createEvent(modules[i]); } catch (error) { }
+		if (event) break;
+	}
+	if (!event) throw "Could not create event in " + module;
+	Object.copy(event, tmp);
+	event.eventStatus |= EventState.FAKE_EVENT;
+	event._preventDefault = event.preventDefault;
+	event._stopPropagation = event.stopPropagation;
+	event.preventDefault = function() { Event.prototype.preventDefault.call(this); this._preventDefault(); }
+	event.stopPropagation = function() { Event.prototype.stopPropagation.call(this); this._stopPropagation(); }
+	return event;
+}
+
+var fail = false;
+Array.forEach (eventModules, function(module) {
+	try {
+		var event = document.createEvent(module);
+		if (!event["init"+module]) fail = true;
+	}
+	catch (error) { fail = true; }
+})
+if (fail) {
+	document._createEvent = document.createEvent;
+	document.createEvent = DocumentEvent.prototype.createEvent;
+}
+
+}}
+
+else if (document.createEventObject) {{
+
+DocumentEvent.prototype.createEvent = function(module) {
+	var dom3Module = eventModuleMap[module] || module;
+	var tmp = eventTemplates[dom3Module];
+	if (!tmp) throw "Invalid event module: " + module;
+	var event = {}; // document.createEventObject(); TODO do we ever need IE event objects??
+	Object.copy(event, tmp);
+	event.eventStatus |= EventState.FAKE_EVENT;
+	event.preventDefault = function() { Event.prototype.preventDefault.call(this); this.returnValue = false; }
+	event.stopPropagation = function() { Event.prototype.stopPropagation.call(this); this.cancelBubble = true; }
+	return event;
+}
+
+document.createEvent = DocumentEvent.prototype.createEvent;
+
+}}
+
+
+var GenericEventTarget = function(target, eventSystem) {
+	this.target = target;
+	this.eventSystem = eventSystem;
+	this.listenerTable = {}; // lookup by this.listenerTable[type][Boolean(capture)][index]	
+}
+GenericEventTarget.prototype.xblDestroy = function(target) {
+	this.target = null;
+	this.eventSystem = null;
+	this.listenerTable = null;
+}
+GenericEventTarget.prototype.handleEvent = function(event) {
+	var capture = (event.eventPhase == Event.CAPTURING_PHASE) ? 1 : 0;
+	var table = this.listenerTable[event.type];
+	if (!table) return;
+	var listeners = table[capture];
+	for (var n=listeners.length, i=0; i<n; i++) {
+		var listener = listeners[i];
+		try {
+			if (listener.handleEvent) return listener.handleEvent(event);
+			else return listener(event);
+		}
+		catch (error) {
+			logger.error("Error in event listener: " + error);
+			return;
+		}
+	}
+}
+
+GenericEventTarget.prototype.addEventListener = function(type, listener, useCapture) {
+	if (!this.listenerTable[type]) this.listenerTable[type] = [ [], [] ];
+	var capture = (useCapture) ? 1 : 0;
+	this.listenerTable[type][capture].push(listener);
+}
+
+GenericEventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
+	var capture = (useCapture) ? 1 : 0;
+	var listeners = this.listenerTable[type][capture];
+	for (var i=listeners.length-1; i>=0; i--) {
+		if (listeners[i] == listener) {
+			listeners.splice(i, 1);
+			break;
+		}
+	}
+}
+GenericEventTarget.prototype.hasEventListener = function(type, listener, useCapture) {
+	if (null == listener) {
+		var tmp = this.listenerTable[type];
+		if (!(tmp && (tmp[0] && tmp[0].length || tmp[1] && tmp[1].length))) return false;
+	}
+	var capture = (useCapture) ? 1 : 0;
+	var listeners = this.listenerTable[type][capture];
+	for (var i=listeners.length-1; i>=0; i--) {
+		if (listeners[i] == listener) return true;
+	}
+	return false;
+}
+GenericEventTarget.prototype.dispatchEvent = function(event) {
+	return this.eventSystem.dispatchEvent(this.target, event);
+}
+
+var EventTarget = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+EventTarget.interfaceLookup = new Array(13); // NOTE potentially one for every node type + Window
+EventTarget.getInterface = function(target) {
+	var nodeType = (target == window) ? 0 : target.nodeType;
+	var lookup = this.interfaceLookup[nodeType];
+	return (lookup) ? lookup(target) : null;	
+}
+EventTarget.methods = ["addEventListener", "removeEventListener", "dispatchEvent"];
+EventTarget.prototype.xblCreate = function(target) {
+	this.target = target;
+	var xblPublic = EventTarget.methods;
+	Meeko.stuff.domSystem.hideInterface(target, xblPublic);
+	Meeko.stuff.domSystem.bindInterface(target, this, xblPublic, true); // NOTE override on W3C systems
+	this.baseBinding = new GenericEventTarget(target, eventSystem);
+	var eventTarget = this;
+	this.eventListener = function(event) { eventTarget.handleEvent(event); }
+}
+EventTarget.prototype.xblDestroy = function(target) {
+	this.target = null;
+	this.eventListener = null;
+	this.baseBinding.xblDestroy(target);
+	var xblPublic = EventTarget.methods;
+	Meeko.stuff.domSystem.releaseInterface(target, this, xblPublic, true);
+	Meeko.stuff.domSystem.restoreInterface(target, xblPublic);
+}
+EventTarget.prototype.handleEvent = function(event) {
+	this.baseBinding.handleEvent(event);
+}
+
+if (window.addEventListener) {{
+EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window", EventTarget);
+EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
+EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
+	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
+		if (!EventSystem.handlers[type]) this.target._addEventListener(type, this.eventListener, useCapture);
+	}
+	this.baseBinding.addEventListener(type, listener, useCapture);
+}
+EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
+	this.baseBinding.removeEventListener(type, listener, useCapture);
+	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
+		if (!EventSystem.handlers[type]) this.target._removeEventListener(type, this.eventListener, useCapture);
+	}
+}
+EventTarget.prototype.dispatchEvent = function(event) { // FIXME this assumes that EventTarget is only attached to window or document
+	if (this.target._dispatchEvent) this.target._dispatchEvent(event);
+	else document.dispatchEvent(event);
+}
+}}
+else if (window.attachEvent) {{
+EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window", EventTarget);
+EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
+EventTarget.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Element", EventTarget);
+EventTarget.prototype._xblCreate = EventTarget.prototype.xblCreate;
+EventTarget.prototype.xblCreate = function(target) {
+	this._xblCreate(target);
+	if (target.nodeType != Node.ELEMENT_NODE) return;
+	this.onattrmodified = function(srcEvent) {
+		var target = eventTarget.target;
+		var attrName = srcEvent.propertyName;
+		var newValue = target[attrName];
+		switch (typeof newValue) {
+			case "string": case "number": case "boolean": case "undefined": break;
+			case "object": if (null === newValue) break;
+			default: return;
+		}
+		var prevValue = this.prevValues[attrName];
+		this.prevValues[attrName] = newValue;
+		var attrChange = (newValue != null) ? ((prevValue != null) ? 1 : 2) : 3; // MODIFICATION, ADDITION, REMOVAL;
+		var event = document.createEvent("MutationEvent");
+		event.initMutationEvent("DOMAttrModified", true, false, null, prevValue, newValue, attrName, attrChange);
+		event.target = target;
+		event.eventPhase = 2; // AT_TARGET
+		event.currentTarget = target;
+		eventTarget.handleEvent(event);
+		event.currentTarget = null;
+		event.target = null;
+	}
+	this.prevValues = {}; // for onattrmodified
+	var atts = this.target.attributes;
+	for (var n=atts.length, i=0; i<n; i++) {
+		var att = atts[i];
+		if (att.specified) this.prevValues[att.nodeName] = att.nodeValue;
+	}
+/*
+	// this approach is quicker, but crashes the browser on document.documentElement
+	var clone = this.target.cloneNode(false);
+	var text = clone.outerHTML.replace(/^\S+/, "");
+	var rex = /\s+([-_a-zA-Z0-9]+)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))(\>)?/g;
+	RegExp.lastIndex = 0;
+	var m;
+	while (m = rex.exec(text)) {
+		var attrName = m[1];
+		var val = m[2]; if ("" == val) val = m[3]; if ("" == val) val = m[4];
+		this.prevValues[attrName] = val;
+		if (">" == m[5]) break; 
+	}
+*/
+}
+
+EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
+	if (!this.baseBinding.hasEventListener(type)) {
+		eventSystem.registerEvent(type);
+		if (type == "DOMAttrModified") this.target.attachEvent("onpropertychange", this.onattrmodified);
+	}
+	this.baseBinding.addEventListener(type, listener, useCapture);
+}
+EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
+	this.baseBinding.removeEventListener(type, listener, useCapture);
+	if (type == "DOMAttrModified" && !this.baseBinding.hasEventListener(type)) this.target.detachEvent("onpropertychange", this.onattrmodified);
+}
+EventTarget.prototype.dispatchEvent = function(event) {
+	eventSystem.dispatchEvent(this.target, event);
+}
+}}
+else { throw "EventTarget only implemented with addEventListener of attachEvent"; }
+
+
+if (!document.addEventListener && document.attachEvent) {{ // DOMMutation is only required on IE
+
+var DOMMutation = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+
+DOMMutation.interfaceLookup = new Array(13); // NOTE potentially one for every node type + Window
+DOMMutation.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", DOMMutation);
+DOMMutation.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Element", DOMMutation);
+DOMMutation.getInterface = function(target) {
+	var nodeType = (target == window) ? 0 : target.nodeType;
+	var lookup = this.interfaceLookup[nodeType];
+	return (lookup) ? lookup(target) : null;
+}
+DOMMutation.methods = ["insertBefore", "replaceChild", "removeChild", "appendChild", "cloneNode"];
+
+DOMMutation.prototype.xblCreate = function(element) {
+	var domMutation = this;
+	this.boundElement = element;
+	Meeko.stuff.domSystem.hideInterface(element, DOMMutation.methods);
+	Meeko.stuff.domSystem.bindInterface(element, this, DOMMutation.methods, true);
+	this.domMutation_listener = function(event) { domMutation.onpropertychange(event); }
+	element.attachEvent("onpropertychange", this.domMutation_listener);
+}
+DOMMutation.prototype.xblDestroy = function() {
+	var element = this.boundElement;
+	element.detachEvent("onpropertychange", this.domMutation_listener);
+	Meeko.stuff.domSystem.releaseInterface(element, this, DOMMutation.methods, true);
+	Meeko.stuff.domSystem.restoreInterface(element, DOMMutation.methods);
+}
+
+DOMMutation.prototype.cloneNode = function(deep) {
+	var element = this.boundElement;
+	var lookup = {
+		"thead": [ "table" ],
+		"tbody": [ "table" ],
+		"tfoot": [ "table" ],
+		"colgroup": [ "table" ],
+		"col": [ "table", "colgroup" ],
+		"tr": [ "table" ],
+		"td": [ "table", "tr" ],
+		"option": [ "select" ],
+		"li": [ "ul" ]
+	}
+	var tree = lookup[element.tagName.toLowerCase()];
+	var frag = document.createElement("div");
+	var begin = "", end = "";
+	for (var n=tree.length, i=0; i<n; i++) begin += "<" + tree[i] + ">";
+	for (var i=tree.length-1; i>=0; i--) end += "</" + tree[i] + ">";
+	frag.innerHTML = begin + (deep ? element.outerHTML : element.cloneNode(false).outerHTML) + end;
+	var clone = frag.firstChild;
+	for (var i=0; i<tree.length; i++) {
+		clone = clone.firstChild;
+	}
+	clone.parentNode.removeChild(clone);
+	return clone;
+}
+
+DOMMutation.prototype.onpropertychange = function(event) {
+	if (event.propertyName == "innerHTML") {
+		var element = this.boundElement;
+		// FIXME should have "DOMNodeRemoved" events too
+		for (var node=element.firstChild; node; node=node.nextSibling) {
+			if (Node.ELEMENT_NODE != node.nodeType) continue;
+			if (node["_Element"]) continue; // FIXME orthogonality - how to tell if node is newly inserted??
+			this.notify("DOMNodeInserted", node, element);
+		}
+	}
+}
+DOMMutation.prototype.insertBefore = function(node, ref) {
+	var result = this.boundElement._insertBefore(node, ref);
+	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
+	return result;
+}
+
+DOMMutation.prototype.replaceChild = function(node, old) {
+	this.notify("DOMNodeRemoved", old, this.boundElement); // FIXME
+	var result = this.boundElement._replaceChild(node, old);
+	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
+	return result;
+}
+
+DOMMutation.prototype.removeChild = function(old) {
+	var element = this.boundElement;
+	this.notify("DOMNodeRemoved", old, this.boundElement); // FIXME
+	var result = element._removeChild(old);
+	return result;
+}
+
+DOMMutation.prototype.appendChild = function(node) {
+	var result = this.boundElement._appendChild(node);
+	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
+	return result;
+}
+
+DOMMutation.prototype.notify = function(type, node) {
+	if (!document.documentElement.contains(node)) return;
+	var event = document.createEvent("MutationEvent");
+	event.initMutationEvent(type, true, false, this.boundElement);
+	eventSystem.dispatchEvent(node, event);
+}
+
+}}
+
+
+if (!document.addEventListener && document.attachEvent) {{ // *Bubbler is only required on IE
+
+var FocusBubbler = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+
+FocusBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLElement", FocusBubbler);
+FocusBubbler.prototype.xblCreate = function(target) {
+	this.target = target;
+	var bubbler = this;
+	this.focusBubbler_listener = function(srcEvent) {
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, false, true);
+		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+	}
+	target.attachEvent("onfocus", this.focusBubbler_listener);
+}
+
+FocusBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onfocus", this.focusBubbler_listener);
+	this.focusBubbler_listener = null;
+	this.target = null;
+}
+
+var ChangeBubbler = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+ChangeBubbler.interfaceLookup = {};
+ChangeBubbler.interfaceLookup["input"] = Meeko.stuff.domSystem.addImplementation("HTMLInputElement", ChangeBubbler);
+ChangeBubbler.interfaceLookup["select"] = Meeko.stuff.domSystem.addImplementation("HTMLSelectElement", ChangeBubbler);
+ChangeBubbler.getInterface = function(target) {
+	var tagName = target.tagName.toLowerCase();
+	var lookup = this.interfaceLookup[tagName];
+	return (lookup) ? lookup(target) : null;
+}
+
+ChangeBubbler.prototype.xblCreate = function(target) {
+	this.target = target;
+	var bubbler = this;
+	this.changeBubbler_listener = function(srcEvent) {
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, true, true);
+		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+	}
+	target.attachEvent("onchange", this.changeBubbler_listener);
+}
+
+ChangeBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onchange", this.changeBubbler_listener);
+	this.changeBubbler_listener = null;
+	this.target = null;
+}
+
+var SubmitBubbler = function(target) {
+	if (null == target) return null; // TODO throw ??
+	if (this == window) return arguments.callee.getInterface(target);
+	else arguments.callee.prototype.xblCreate.call(this, target);
+}
+
+SubmitBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLFormElement", SubmitBubbler);
+SubmitBubbler.prototype.xblCreate = function(target) {
+	this.target = target;
+	var bubbler = this;
+	this.submitBubbler_listener = function(srcEvent) {
+		var event = document.createEvent("Event");
+		event.initEvent(srcEvent.type, true, true);
+		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+	}
+	target.attachEvent("onsubmit", this.submitBubbler_listener);
+	target.attachEvent("onreset", this.submitBubbler_listener);
+}
+
+SubmitBubbler.prototype.xblDestroy = function(target) {
+	target.detachEvent("onsubmit", this.submitBubbler_listener);
+	target.detachEvent("onreset", this.submitBubbler_listener);
+	this.submitBubbler_listener = null;
+	this.target = null;
+}
+
+}}
+
+
+Meeko.stuff.eventSystem = eventSystem; // FIXME back-door to virtually everything
+
+return {
+	Event: Event,
+	CustomEvent: CustomEvent,
+	UIEvent: UIEvent,
+	TextEvent: TextEvent,
+	KeyboardEvent: KeyboardEvent,
+	MouseEvent: MouseEvent,
+	MutationEvent: MutationEvent
+}
+
+})();
+
+Meeko.XPL.Namespace.enhance(window, Meeko.DOM.Events);
+
+]]>
+</script>
+</head>
+</html>
