@@ -321,19 +321,32 @@ function detachDOMBindingsByNodeType(nodeType) {
 
 var timerId = null,
 	readyState = "uninitialized",
-	domWalker = null;
+	domWalker = null,
+	trigger = "head";
 
+var readyStateLookup = {
+	"uninitialized": false,
+	"loading": false,
+	"loaded": true,
+	"interactive": true,
+	"complete": true
+}
+function checkTrigger() {
+	if (trigger == "head") return (document.body) ? true : false;
+	else return readyStateLookup[document.readyState] || false;
+}
 function init() {
 	if (null == document.readyState) { // Mozilla
 		document.readyState = "loading";	
-		document.addEventListener("DOMContentLoaded", function(event) { document.readyState = "loaded"; }, true);
+		window.addEventListener("DOMContentLoaded", function(event) { document.readyState = "loaded"; }, true);
 		window.addEventListener("load", function(event) { if (event.target == document || event.target == window) document.readyState = "complete"; }, true);
 	}
 	
-	if (window.addEventListener) window.addEventListener("unload", exit, true);
+	if (window.addEventListener) window.addEventListener("unload", exit, false);
 	if (window.attachEvent) window.attachEvent("onunload", exit);	
 
-	onprogress();
+	if (trigger == "head" && checkTrigger()) trigger == "body"; // FIXME
+	timerId = window.setTimeout(onprogress, 0); // push into queue
 }
 
 function exit() { // FIXME
@@ -350,7 +363,7 @@ logger.debug("Finished exit process");
 }
 
 function onprogress() {
-	if (readyState == "uninitialized" && document.body || readyState != "uninitialized") _init();
+	if (readyState == "uninitialized" && checkTrigger() || readyState != "uninitialized") _init();
 	if (readyState != "complete") timerId = window.setTimeout(onprogress, 50);
 }
 

@@ -35,6 +35,8 @@ var Text = function() {};
 var Document = function() {};
 
 Document.prototype.importNode = function(node, bDeep) {
+	// FIXME need to check whether importing from xml or html document
+	// and make use of attr.specifed, style.cssText, etc
 	var document = this;
 	var tree;
 	switch (node.nodeType) {
