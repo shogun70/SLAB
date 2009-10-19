@@ -892,6 +892,12 @@ DOMMutation.prototype.notify = function(type, node) {
 
 
 if (!document.addEventListener && document.attachEvent) {{ // *Bubbler is only required on IE
+// TODO this is coarse feature detection -
+// relying on attachEvent to indicate non-bubbling submit, reset, change events.
+// Can we do better??
+document.attachEvent("onfocusin", function(srcEvent) {
+	Meeko.stuff.domSystem.attach(srcEvent.srcElement);
+})
 
 var FocusBubbler = function(target) {
 	if (null == target) return null; // TODO throw ??
