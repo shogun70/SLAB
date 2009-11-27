@@ -120,13 +120,13 @@ DOMTokenList.prototype.item = function(index) {
 }
 DOMTokenList.prototype.contains = function(token) {
 	var tokens = this._getTokens();
-	return (tokens.indexOf(token) >= 0) ? true : false;
+	return (tokens.indexOf(token) >= 0);
 }
 DOMTokenList.prototype.add = function(token) {
 	if (this.contains(token)) return;
 	var text = this._getText();
 	var n = text.length;
-	if (n && text.substring(n-1,1) != " ") text += " " + token;
+	if (n && text.charAt(n-1) != " ") text += " " + token;
 	else text += token;
 	this._setText(text);
 }
