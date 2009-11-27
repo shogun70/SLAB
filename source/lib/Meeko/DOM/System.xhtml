@@ -364,7 +364,7 @@ logger.debug("Finished exit process");
 
 function onprogress() {
 	if (readyState == "uninitialized" && checkTrigger() || readyState != "uninitialized") _init();
-	if (readyState != "complete") timerId = window.setTimeout(onprogress, 50);
+	if (readyState != "complete") timerId = window.setTimeout(onprogress, 50); // FIXME timeout shouldn't be hard-coded
 }
 
 var _initializing = false; // guard against re-entrancy
