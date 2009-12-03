@@ -108,13 +108,17 @@ var interfaceRulesTree = {
 	}
 }
 
+// TODO all this node manager stuff assumes that nodes are only released on unload
+// This might need revising
 var nodeTable = new Array(13);
 for (var i=0; i<13; i++) {
 	nodeTable[i] = [];
 }
+var nodeStorage = {};
+
 var nodeManager = {};
 nodeManager.getStorage = function(node) {
-	return node.slabID;
+	return nodeStorage[node.slabID];
 }
 nodeManager.addNode = function(node, callback, context) {
 	if (this.getStorage(node)) { // FIXME why?
@@ -125,13 +129,9 @@ nodeManager.addNode = function(node, callback, context) {
 	var nodeList = nodeTable[nodeType];
 	var index = nodeList.length;
 	nodeList.push(node);
-	var slabID = "slab__" + nodeType + "_" + index;
-	var store = {
-		__id__ : slabID,
-		valueOf: function() { return this.__id__ },
-		toString: function() { return this.__id__ }
-	};
-	node.slabID = store;
+	var slabID = "slab_" + nodeType + "_" + index;
+	node.slabID = slabID;
+	nodeStorage[slabID] = {};
 	if (callback) callback.call(context, node);
 	return true;
 }
@@ -139,11 +139,12 @@ nodeManager.releaseNodesByType = function(type, callback, context) {
 	var nodeList = nodeTable[type];
 	for (var i=nodeList.length-1; i>=0; i--) {
 		var node = nodeList[i];
-		if (callback) callback.call(context, node);
 		delete nodeList[i];
-		var store = node.slabID;
-		node.slabID = null;
+		if (callback) callback.call(context, node);
+		delete nodeStorage[node.slabID];
+		node.slabID = null; // NOTE can't delete node properties in IE
 	}
+	nodeTable[type] = [];
 }
 
 /*
@@ -327,8 +328,8 @@ var timerId = null,
 var readyStateLookup = {
 	"uninitialized": false,
 	"loading": false,
+	"interactive": false,
 	"loaded": true,
-	"interactive": true,
 	"complete": true
 }
 function checkTrigger() {
@@ -380,9 +381,7 @@ function _init() {
 	
 	_initializing = true;
 	try { __init(); }
-	catch(error) {
-		logger.error(error.message);
-	}
+	catch(error) { logger.error(error.message); }
 	_initializing = false;	
 }
 
