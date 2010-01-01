@@ -61,15 +61,27 @@ Document.prototype.importNode = function(node, bDeep) {
 	return tree;
 }
 
+if (!document.compareDocumentPosition && document.documentElement.contains) {
+
+Document.prototype.compareDocumentPosition = function(node) { // FIXME compare nodes in different documents
+	if (node == undefined) return 0x01; // Node.DOCUMENT_POSITION_DISCONNECTED;
+	if (this === node) return 0;
+	if (node.sourceIndex <= 0) return 0x01; // Node.DOCUMENT_POSITION_DISCONNECTED;
+	if (node.ownerDocument === this) return 0x14; // Node.DOCUMENT_POSITION_CONTAINED_BY | Node.DOCUMENT_POSITION_FOLLOWING;
+	return 0x01; // Node.DOCUMENT_POSITION_DISCONNECTED;
+}
+
+}
+
 var Element = function() {}
 
 if (!document.documentElement.compareDocumentPosition && document.documentElement.contains) {
 
-Element.prototype.compareDocumentPosition = function(node) {
+Element.prototype.compareDocumentPosition = function(node) { // FIXME compare nodes in different documents
 	if (node == undefined) return 0x01; // Node.DOCUMENT_POSITION_DISCONNECTED;
 	if (this === node) return 0;
 	if (node.sourceIndex <= 0 || this.sourceIndex <= 0) return 0x01; // Node.DOCUMENT_POSITION_DISCONNECTED;
-	if (node.contains(this)) return 0x0A; // Node.DOCUMENT_POSITION_CONTAINS | Node.DOCUMENT_POSITION_PRECEDING;
+	if (node === this.ownerDocument || node.contains(this)) return 0x0A; // Node.DOCUMENT_POSITION_CONTAINS | Node.DOCUMENT_POSITION_PRECEDING;
 	if (this.contains(node)) return 0x14; // Node.DOCUMENT_POSITION_CONTAINED_BY | Node.DOCUMENT_POSITION_FOLLOWING;
 	if (node.sourceIndex < this.sourceIndex) return 0x02; // Node.DOCUMENT_POSITION_PRECEDING;
 	if (node.sourceIndex > this.sourceIndex) return 0x04; // Node.DOCUMENT_POSITION_FOLLOWING;
@@ -125,53 +137,17 @@ DOMTokenList.prototype.contains = function(token) {
 DOMTokenList.prototype.add = function(token) {
 	if (this.contains(token)) return;
 	var text = this._getText();
-	var n = text.length;
-	if (n && text.charAt(n-1) != " ") text += " " + token;
-	else text += token;
+	var n = text.length,
+		space = (n && text.charAt(n-1) != " ") ? " " : "";
+	text += space + token;
 	this._setText(text);
 }
-DOMTokenList.prototype.remove = function(token) {
-	var text = this._getText(), tmp = text, result = "";
-	var rex = /^(\s*)(\w+)\b(\s*)/;
-	var i = 0; // non-matching-token counter
-	var lastMatch = false;
-	result = text.replace(/(\s*)\b(\w+)\b/g, function($0, $1, $2) {
-		var tmp;
-		if ($2 == token) {
-			tmp = "";
-			lastMatch = true;
-		}
-		else {
-			tmp = (lastMatch) ? " " + $2 : $0; 
-			i++;
-			lastMatch = false;
-		}
-		return tmp;
-	});
-	if (lastMatch) result = result.replace(/\s*$/, "");
-	while (0) { // loop forever
-		var m = tmp.match(rex);
-		if (m[0] == tmp) { // at end
-			if (m[2] != token) {
-				result += m[0];
-				i++;
-			}
-			tmp = "";
-			break;
-		}
-		if (m[2] == token) { // match
-			var offset = m[0].length - (i ? 1 : 0);
-			tmp = tmp.substring(offset);
-		}
-		else {
-			i++;
-			result += m[1] + m[2];
-			var offset = m[1].length + m[2].length;
-			tmp = tmp.substring(offset);
-		}
-	}
-	if (result == text) return;
-	this._setText(result);
+DOMTokenList.prototype.remove = function(token) { // FIXME this single spaces all tokens
+	var text = this._getText();
+	var prev = text.split(/\s+/);
+	var next = prev.filter(function(str) { return str != token; });
+	if (prev.length == next.length) return;
+	this._setText(next.join(" "));
 }
 DOMTokenList.prototype.toggle = function(token) {
 	if (this.contains(token)) this.remove(token);
