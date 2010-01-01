@@ -10,7 +10,7 @@
 // FIXME refactor - this package has its fingers in everywhere and has back-doors for everything. Seriously yukky.
 // FIXME confirm that preventDefault & stopPropagation actually work
 // FIXME use onpropertychange for event simulation on IE??
-
+// FIXME DOM3Events now uses key instead of keyIdentifier
 Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.Events");
 Meeko.DOM.Events = (function() {
 
@@ -62,17 +62,34 @@ var EventSystem = function() {
 		for (var type in EventSystem.handlers) (function(system, evType, handlers) {
 			window.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, true);
 		})(this, type, EventSystem.handlers);
+/* these shouldn't be necessary as the events should always go thru window
 		for (var type in {"DOMContentLoaded": true, "load": true}) (function(system, evType, handlers) {
 			document.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, true);
 			document.addEventListener(evType, function(event) { handlers[evType].call(system, event); }, false);
 		})(this, type, EventSystem.handlers);
+*/
+	}
+	else if (window.attachEvent) {
+		var delegate = this.eventDelegate = document.createElement("meta");
+		delegate.attachEvent("onpropertychange", function(e) {
+			var event = e.srcElement.__event__;
+			var eventTarget = EventTarget(event.currentTarget);
+			var handlers = eventTarget.getListeners(event);
+			var listener = handlers[event.listenerIndex].listener;
+			var rc = (listener.handleEvent) ?
+				listener.handleEvent(event) :
+				listener.call(null, event);
+			e.returnValue = event.returnValue || rc; // FIXME is this correct?? Does it matter??
+		});
+		var head = document.getElementsByTagName("head")[0];
+		head.insertBefore(delegate, head.firstChild);
 	}
 }
 
 EventSystem.prototype.handleEvent = function(event, currentTarget) {
 	var target = currentTarget || event.currentTarget;
 	var eventTarget = EventTarget(target);
-	var rc = (eventTarget) ? eventTarget.handleEvent(event) : null;
+	var rc; // = (eventTarget) ? eventTarget.handleEvent(event) : null;
 	;;;logger.debug((event.eventStatus & EventState.FAKE_EVENT ? "Compatibility" : "Browser") + " " + event.type + " event received" + (target == window ? " on window" : "") +
 		" during " + (event.eventPhase == 1 ? "capture" : "bubbling") + " phase" + (eventTarget ? " and forwarded" : ""));
 	return rc;
@@ -332,6 +349,7 @@ EventSystem.prototype.dispatchEvent = function(target, event) {
 }
 
 EventSystem.prototype._dispatchEvent = function(target, event) {
+	var eventSystem = this;
 	event.target = target;
 	var path = [];
 	var current = target;
@@ -344,9 +362,14 @@ EventSystem.prototype._dispatchEvent = function(target, event) {
 	path.push(window);
 
 	function dispatch(current, event) {
-		event.currentTarget = current;
 		var eventTarget = EventTarget(current);
-		if (eventTarget) eventTarget.handleEvent(event);		
+		if (!eventTarget) return;
+		event.currentTarget = current;
+		var n = eventTarget.getListeners(event).length;
+		for (var i=0; i<n; i++) {
+			event.listenerIndex = i;
+			eventSystem.eventDelegate.__event__ = event;
+		}	
 	}
 	
 	event.eventPhase = Event.CAPTURING_PHASE;
@@ -379,10 +402,10 @@ Event.AT_TARGET = 2;
 Event.BUBBLING_PHASE = 3;
 Event.prototype.initEvent = function(type, bubbles, cancelable) { // TODO check that event.type is appropriate for event-module
 	this.eventStatus = 0;
-	this.timeStamp = Number(new Date);
+	this.timeStamp = +(new Date);
 	this.type = type;
-	this.bubbles = Boolean(bubbles);
-	this.cancelable = Boolean(cancelable);
+	this.bubbles = !!bubbles;
+	this.cancelable = !!cancelable;
 }
 
 Event.prototype.preventDefault = function() { this.eventStatus |= EventState.DEFAULT_PREVENTED; }
@@ -602,66 +625,6 @@ document.createEvent = DocumentEvent.prototype.createEvent;
 }}
 
 
-var GenericEventTarget = function(target, eventSystem) {
-	this.target = target;
-	this.eventSystem = eventSystem;
-	this.listenerTable = {}; // lookup by this.listenerTable[type][Boolean(capture)][index]	
-}
-GenericEventTarget.prototype.xblDestroy = function(target) {
-	this.target = null;
-	this.eventSystem = null;
-	this.listenerTable = null;
-}
-GenericEventTarget.prototype.handleEvent = function(event) {
-	var capture = (event.eventPhase == Event.CAPTURING_PHASE) ? 1 : 0;
-	var table = this.listenerTable[event.type];
-	if (!table) return;
-	var listeners = table[capture];
-	for (var n=listeners.length, i=0; i<n; i++) {
-		var listener = listeners[i];
-		try {
-			if (listener.handleEvent) return listener.handleEvent(event);
-			else return listener(event);
-		}
-		catch (error) {
-			logger.error("Error in event listener: " + error.message);
-			return;
-		}
-	}
-}
-
-GenericEventTarget.prototype.addEventListener = function(type, listener, useCapture) {
-	if (!this.listenerTable[type]) this.listenerTable[type] = [ [], [] ];
-	var capture = (useCapture) ? 1 : 0;
-	this.listenerTable[type][capture].push(listener);
-}
-
-GenericEventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
-	var capture = (useCapture) ? 1 : 0;
-	var listeners = this.listenerTable[type][capture];
-	for (var i=listeners.length-1; i>=0; i--) {
-		if (listeners[i] == listener) {
-			listeners.splice(i, 1);
-			break;
-		}
-	}
-}
-GenericEventTarget.prototype.hasEventListener = function(type, listener, useCapture) {
-	if (null == listener) {
-		var tmp = this.listenerTable[type];
-		if (!(tmp && (tmp[0] && tmp[0].length || tmp[1] && tmp[1].length))) return false;
-	}
-	var capture = (useCapture) ? 1 : 0;
-	var listeners = this.listenerTable[type][capture];
-	for (var i=listeners.length-1; i>=0; i--) {
-		if (listeners[i] == listener) return true;
-	}
-	return false;
-}
-GenericEventTarget.prototype.dispatchEvent = function(event) {
-	return this.eventSystem.dispatchEvent(this.target, event);
-}
-
 var EventTarget = function(target) {
 	if (null == target) return null; // TODO throw ??
 	if (this == window) return arguments.callee.getInterface(target);
@@ -679,40 +642,69 @@ EventTarget.prototype.xblCreate = function(target) {
 	var xblPublic = EventTarget.methods;
 	Meeko.stuff.domSystem.hideInterface(target, xblPublic);
 	Meeko.stuff.domSystem.bindInterface(target, this, xblPublic, true); // NOTE override on W3C systems
-	this.baseBinding = new GenericEventTarget(target, eventSystem);
-	var eventTarget = this;
-	this.eventListener = function(event) { eventTarget.handleEvent(event); }
+	this.listenerTable = {};	
 }
 EventTarget.prototype.xblDestroy = function(target) {
 	this.target = null;
-	this.eventListener = null;
-	this.baseBinding.xblDestroy(target);
+	this.listenerTable = {};	
 	var xblPublic = EventTarget.methods;
 	Meeko.stuff.domSystem.releaseInterface(target, this, xblPublic, true);
 	Meeko.stuff.domSystem.restoreInterface(target, xblPublic);
 }
-EventTarget.prototype.handleEvent = function(event) {
-	this.baseBinding.handleEvent(event);
+EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
+	var capture = (useCapture) ? 1 : 0;
+	if (!this.listenerTable[type]) this.listenerTable[type] = [ [], [] ];
+	var handlers = this.listenerTable[type][capture];
+	var fn = function(event) {
+		return (listener.handleEvent) ?
+			listener.handleEvent(event) :
+			listener.call(null, event);
+	}
+	var handler = {
+		fn: fn,
+		listener: listener
+	};
+	handlers.push(handler);
+	return handler.fn;
+}
+EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
+	var capture = (useCapture) ? 1 : 0;
+	if (!this.listenerTable[type]) return;
+	var handlers = this.listenerTable[type][capture];
+	for (var i=handlers.length-1; i>=0; i--) {
+		var handler = handlers[i];
+		if (handler.listener !== listener) continue;
+		handlers.splice(i, 1);
+		return handler.fn;
+	}
+}
+EventTarget.prototype.dispatchEvent = function(event) { // FIXME
+}
+EventTarget.prototype.getListeners = function(event) {
+	var type = event.type,
+	capture = (event.eventPhase === 1) ? 1 : 0;
+	var listeners = this.listenerTable[type];
+	return (listeners) ?
+		listeners[capture] :
+		[];
 }
 
 if (window.addEventListener) {{
 EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window", EventTarget);
 EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
+EventTarget.prototype._addEventListener = EventTarget.prototype.addEventListener;
+EventTarget.prototype._removeEventListener = EventTarget.prototype.removeEventListener;
+EventTarget.prototype._dispatchEvent = EventTarget.prototype.dispatchEvent;
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
-	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
-		if (this.target != window || !EventSystem.handlers[type]) this.target._addEventListener(type, this.eventListener, useCapture);
-	}
-	this.baseBinding.addEventListener(type, listener, useCapture);
+	var fn = this._addEventListener(type, listener, useCapture);
+	this.target._addEventListener(type, fn, useCapture);
 }
-EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
-	this.baseBinding.removeEventListener(type, listener, useCapture);
-	if (!this.baseBinding.hasEventListener(type, null, useCapture)) {
-		if (this.target != window || !EventSystem.handlers[type]) this.target._removeEventListener(type, this.eventListener, useCapture);
-	}
+EventTarget.prototype._removeEventListener = function(type, listener, useCapture) {
+	var fn = this._removeEventListener(type, listener, useCapture);
+	this.target._removeEventListener(type, fn, useCapture);
 }
-EventTarget.prototype.dispatchEvent = function(event) { // FIXME this assumes that EventTarget is only attached to window or document
-	if (this.target._dispatchEvent) this.target._dispatchEvent(event);
-	else document.dispatchEvent(event);
+EventTarget.prototype.dispatchEvent = function(event) {
+	this.target._dispatchEvent(event);
 }
 }}
 else if (window.attachEvent) {{
@@ -720,10 +712,14 @@ EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window
 EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
 EventTarget.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Element", EventTarget);
 EventTarget.prototype._xblCreate = EventTarget.prototype.xblCreate;
+EventTarget.prototype._addEventListener = EventTarget.prototype.addEventListener;
+EventTarget.prototype._removeEventListener = EventTarget.prototype.removeEventListener;
+EventTarget.prototype._dispatchEvent = EventTarget.prototype.dispatchEvent;
 EventTarget.prototype.xblCreate = function(target) {
 	this._xblCreate(target);
 	if (target.nodeType != Node.ELEMENT_NODE) return;
-	this.onattrmodified = function(srcEvent) {
+	var eventTarget = this;
+	this.onattrmodified = function(srcEvent) { // FIXME re-write for new event handling implementation
 		var target = eventTarget.target;
 		var attrName = srcEvent.propertyName;
 		var newValue = target[attrName];
@@ -737,12 +733,7 @@ EventTarget.prototype.xblCreate = function(target) {
 		var attrChange = (newValue != null) ? ((prevValue != null) ? 1 : 2) : 3; // MODIFICATION, ADDITION, REMOVAL;
 		var event = document.createEvent("MutationEvent");
 		event.initMutationEvent("DOMAttrModified", true, false, null, prevValue, newValue, attrName, attrChange);
-		event.target = target;
-		event.eventPhase = 2; // AT_TARGET
-		event.currentTarget = target;
-		eventTarget.handleEvent(event);
-		event.currentTarget = null;
-		event.target = null;
+		target.dispatchEvent(event);
 	}
 	this.prevValues = {}; // for onattrmodified
 	var atts = this.target.attributes;
@@ -767,15 +758,23 @@ EventTarget.prototype.xblCreate = function(target) {
 }
 
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
-	if (!this.baseBinding.hasEventListener(type)) {
+	var pseudoEvent = {
+		type: type,
+		eventPhase: (useCapture) ? 1 : 3
+	};
+	if (this.getListeners(pseudoEvent).length <= 0) {
 		eventSystem.registerEvent(type);
 		if (type == "DOMAttrModified") this.target.attachEvent("onpropertychange", this.onattrmodified);
 	}
-	this.baseBinding.addEventListener(type, listener, useCapture);
+	this._addEventListener(type, listener, useCapture);
 }
 EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
-	this.baseBinding.removeEventListener(type, listener, useCapture);
-	if (type == "DOMAttrModified" && !this.baseBinding.hasEventListener(type)) this.target.detachEvent("onpropertychange", this.onattrmodified);
+	this._removeEventListener(type, listener, useCapture);
+	var pseudoEvent = {
+		type: type,
+		eventPhase: (useCapture) ? 1 : 3
+	};
+	if (type == "DOMAttrModified" && this.getListeners(pseudoEvent).length <= 0) this.target.detachEvent("onpropertychange", this.onattrmodified);
 }
 EventTarget.prototype.dispatchEvent = function(event) {
 	eventSystem.dispatchEvent(this.target, event);
@@ -883,6 +882,7 @@ DOMMutation.prototype.appendChild = function(node) {
 }
 
 DOMMutation.prototype.notify = function(type, node) {
+	if (!node.contains) return; // FIXME not handling text-nodes for now
 	if (!document.documentElement.contains(node)) return;
 	var event = document.createEvent("MutationEvent");
 	event.initMutationEvent(type, true, false, this.boundElement);
