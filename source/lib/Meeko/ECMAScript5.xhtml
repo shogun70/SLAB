@@ -172,7 +172,6 @@ Array.prototype.forEach = function(callback, context) {
 Array.prototype.filter = function(callback, context) {
 	var array = this;
 	var out = [];
-	if (useItem) out.item = function(index) { return this[index]; }
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
@@ -184,7 +183,6 @@ Array.prototype.filter = function(callback, context) {
 Array.prototype.map = function(callback, context) {
 	var array = this;
 	var out = [];
-	if (useItem) out.item = function(index) { return this[index]; }
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
@@ -206,7 +204,12 @@ Array.prototype.compare = function(array2, cmp) { // NOTE compares n elements wh
 	return rc;
 }
 
-Array.slice = function(array, start, end) { return this.prototype.slice.call(array, start, end); }
+Array.slice = function(array, start, end) {
+	var slice = this.prototype.slice;
+	return (end === undefined) ?
+		slice.call(array, start) :
+		slice.call(array, start, end);
+}
 Array.indexOf = function(array, val, start) { return this.prototype.indexOf.call(array, val, start); }
 Array.lastIndexOf = function(array, val, start) { return this.prototype.lastIndexOf.call(array, val, start); }
 Array.every = function(array, callback, context) { return this.prototype.every.call(array, callback, context); }
