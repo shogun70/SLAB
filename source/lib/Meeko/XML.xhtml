@@ -188,6 +188,10 @@ XMLHttpRequest.prototype.send = function(data) {
 	}
 }
 
+XMLHttpRequest.prototype.abort = function() {
+	if (this._useXHR) this._xhr.abort();
+	else this._hr.abort();
+}
 return {
 	DOMParser: DOMParser,
 	HttpRequest: HttpRequest,
