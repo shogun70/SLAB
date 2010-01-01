@@ -17,7 +17,7 @@ NodeList.filter = function(array, callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var node = array.item(i);
-		callback.call(context, val, i, array) && out.push(node);
+		callback.call(context, node, i, array) && out.push(node);
 	}
 	return out;
 }
@@ -46,9 +46,10 @@ NodeList.some = function(array, callback, context) {
 }
 Array.forEach(["every", "filter", "forEach", "some"], function(name) {
 	Array["_"+name] = Array[name];
-	Array[name] = Function("array",
-		"var delegate = (array.item) ? NodeList."+name+" : Array._"+name+";\n" +
-		"return delegate.apply(this, arguments);\n");
+	Array[name] = function(array) {
+		var delegate = (array.item) ? NodeList[name] : Array["_" + name];
+		return delegate.apply(this, arguments);;
+	}
 });
 
 var domSystem = Meeko.stuff.domSystem;
@@ -384,6 +385,27 @@ HTMLTableRowElement._detach = function(target) {
 	target.cells = target._cells;
 	target._cells = null;
 	this._detach(target);
+}
+} // END with(domSystem);
+
+// FIXME this should be in a DOM module
+if (!window.getComputedStyle && document.documentElement.currentStyle) {
+function toCamelCase(name) {
+	var tokens = name.split("-");
+	for (var i=tokens.length-1; i>=1; i--) {
+		var token = tokens[i];
+		tokens[i] = token.charAt(0).toUpperCase() + token.substring(1);
+	}
+	return tokens.join("");
+}
+var CSSStyleDeclaration = function(config) { // FIXME can we do better than cloning the style object??
+	for (var slot in config) this[slot] = config[slot];
+}
+CSSStyleDeclaration.getPropertyValue = function(prop) {
+	return this[toCamelCase(prop)];
+}
+Window.prototype.getComputedStyle = function(elt, pseudo) { // FIXME don't handle pseudo
+	return new CSSStyleDeclaration(elt.currentStyle);
 }
 }
 
