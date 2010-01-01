@@ -404,7 +404,7 @@ function __init() {
 			;;;logger.debug("loading");
 			// FIXME if document.readyState is updated while this thread is running then there could be a failure here.
 			switch (document.readyState) {
-				case "loaded": case "interactive": case "complete":
+				case "loaded": case "complete":
 					logger.debug("Dispatching compat DOMContentLoaded event");
 					var event = document.createEvent("Event");
 					event.initEvent("DOMContentLoaded", true, true);
