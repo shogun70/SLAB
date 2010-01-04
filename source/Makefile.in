@@ -6,7 +6,8 @@ include @top_srcdir@/mk/gnu.bsdvars.mk
 .SUFFIXES :
 .SUFFIXES : .html .xhtml .js .xml .xpl 
 
-TARGETS = SLAB.js
+TARGETS = SLAB.js jSLAB.js
+BUILD_RESOURCES = libjoquer.js jSLAB_init.js
 
 # Rules
 all : build
@@ -34,3 +35,13 @@ SLAB.js : SLAB.xhtml lib/Meeko/DOM.xhtml
 
 .xpl.js :
 	${XPL2JS} ${.IMPSRC} > ${.TARGET}
+
+jSLAB.js : SLAB.js ${BUILD_RESOURCES}
+	cat ${.ALLSRC} > ${.TARGET}
+
+libjoquer.js:
+	${CURL} ${JOQUER_libexecdir}/libjoquer.js > ${.TARGET}
+
+jSLAB_init.js:
+	${CURL} ${JOQUER_libexecdir}/SLAB/init.js > ${.TARGET}
+

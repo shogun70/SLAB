@@ -29,7 +29,7 @@ install: ${BUILD_TARGETS} ${RESOURCES}
 
 ${BUILD_TARGETS}: ${builddir}/%.html : ${srcdir}/%.html ${builddir}/wrapper.html
 	${HTMLPP} ${PARAMS} ${.IMPSRC} |\
-	${HTMLWRAP} --wrapper wrapper.html - > ${.TARGET}
+	${HTMLDECOR} --decor wrapper.html - > ${.TARGET}
 
 ${builddir}/wrapper.html: ${srcdir}/wrapper.html
 	${HTMLPP} ${PARAMS} ${.IMPSRC} > ${.TARGET}
