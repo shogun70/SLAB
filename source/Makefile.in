@@ -37,7 +37,8 @@ SLAB.js : SLAB.xhtml lib/Meeko/DOM.xhtml
 	${XPL2JS} ${.IMPSRC} > ${.TARGET}
 
 jSLAB.js : SLAB.js ${BUILD_RESOURCES}
-	cat ${.ALLSRC} > ${.TARGET}
+	cat ${.ALLSRC} |\
+	${JSMIN} - > ${.TARGET}
 
 libjoquer.js:
 	${CURL} ${JOQUER_libexecdir}/libjoquer.js > ${.TARGET}
