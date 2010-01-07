@@ -26,6 +26,7 @@ install: ${TARGETS}
 
 clean : 
 	-rm ${TARGETS}
+	-rm ${BUILD_RESOURCES}
 
 SLAB.js : SLAB.xhtml lib/Meeko/DOM.xhtml
 
