@@ -15,25 +15,31 @@ var global = this;
 var Object = function() {}
 Object.prototype = {};
 
-var legacy_defineProperty = function(object, field, desc) { // this is a shim for legacy getters, setters
-	if ((desc.get || desc.set) && desc.value != null) throw "value is incompatible with get, set";
-	if (desc.value != null) {
-		if (delete object[field] && object[field] == null) object[field] = desc.value; 
-		else object.__defineGetter__(field, function() { return desc.value; });
+/*
+ FIXME handle enumerable and configurable descriptor properties in defineProperty and getOwnPropertyDescriptor
+*/
+
+var pseudo_defineProperty = function(object, field, desc) { // this is a shim for legacy getters, setters
+	var value = desc.value;
+	if ((desc.get || desc.set) && value != null) throw "value is incompatible with get, set";
+	if (value != null) {
+		if (delete object[field] && object[field] == null) object[field] = value; 
+		else object.__defineGetter__(field, function() { return value; });
 	}
 	if (desc.get) object.__defineGetter__(field, desc.get);
 	if (desc.set) object.__defineSetter__(field, desc.set);
 	return object;
 }
-var ie6_defineProperty = function(object, field, desc) { 
+var legacy_defineProperty = function(object, field, desc) { 
 	if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
 	if (desc.set) throw "setters not implemented";
 	var value = (desc.get) ? {
+			__getter__: desc.get,
 			valueOf: desc.get.bind(object),
 			toString: desc.get.bind(object)
 		} : desc.value;
 	try { object[field] = value; }
-	catch (error) {
+	catch (error) { // NOTE this a trick to override properties on DOM Elements in IE < 8 
 		if (object.nodeType != 1) throw "Object.defineProperty not valid for non-Element nodes";
 		var attr = document.createAttribute(field);
 		attr.nodeValue = value;
@@ -41,37 +47,117 @@ var ie6_defineProperty = function(object, field, desc) {
 	}
 	return object;
 }
-var ie8_defineProperty = function(object, field, desc) { // FIXME refactor common code with ie6_defineProperty
+var override_defineProperty = function(object, field, desc) { // FIXME refactor common code with ie6_defineProperty
+	var value = desc.value;
 	try {
-		if (desc.value != null && object[field] != null) { // NOTE use getters to override native properties in IE8
-			var getter = function() { return arguments.callee.__value__; }
-			getter.__value__ = desc.value;
+		if (value != null && object[field] != null) { // NOTE use getters to override native properties in IE8
+			var getter = function() { return value; }
 			global.Object._defineProperty(object, field, { get: getter });
 		}
 		else global.Object._defineProperty(object, field, desc);
+		return object;
 	}
-	catch (error) {
-		if ((desc.get || desc.set) && undefined != desc.value) throw "value is incompatible with get, set";
-		if (desc.set) throw "setters not implemented";
-		var value = (desc.get) ? {
-				valueOf: desc.get.bind(object),
-				toString: desc.get.bind(object)
-			} : desc.value;
-		object[field] = value;
+	catch (error) { }
+	
+	try {
+		pseudo_defineProperty(object, field, desc);
+		return object;
 	}
-	return object;
+	catch (error) { }
+
+	try {
+		legacy_defineProperty(object, field, desc);
+		return object;
+	}
+	catch (error) { }
 }
 if (global.Object.defineProperty) {
-	try { global.Object.defineProperty({}, "_x", { get: function() {}}); }
+	try {
+		var props = { get: function() {}};
+		var domObject = document.createElement("div");
+		global.Object.defineProperty({}, "_x", props);
+		global.Object.defineProperty(domObject, "_x", props);
+	}
 	catch (error) {
 		global.Object._defineProperty = global.Object.defineProperty;
 		global.Object.defineProperty = null; // so our method gets added to global Object
-		Object.defineProperty = ie8_defineProperty;
+		Object.defineProperty = override_defineProperty;
+	}
+}
+else Object.defineProperty = (global.Object.prototype.__defineGetter__) ? pseudo_defineProperty :	legacy_defineProperty;
+
+var pseudo_lookupProperty = function(object, field) { // this is a shim for legacy getters, setters
+	var desc = {};
+	desc.get = object.__lookupGetter__(field);
+	desc.set = object.__lookupSetter__(field);
+	if (!(desc.get || desc.set)) desc.value = object[field];
+	return desc;
+}
+var legacy_lookupProperty = function(object, field) {
+	var desc = {};
+	var value = object[field];
+	if (!(desc.get = value.__getter__)) desc.value = value;
+	return desc;
+}
+var override_lookupProperty = function(object, field) { // FIXME refactor common code with ie6_lookupProperty
+	try { return global.Object._getOwnPropertyDescriptor(object, field); }
+	catch (error) { }
+
+	try { return pseudo_lookupProperty(object, field); }
+	catch (error) { }
+	
+	try { return legacy_lookupProperty(object, field); }
+	catch (error) { }
+}
+if (global.Object.getOwnPropertyDescriptor) {
+	try {
+		var domObject = document.createElement("div");
+		domObject._x = 1;
+		global.Object.getOwnPropertyDescriptor({ _x: 1 }, "_x");
+		global.Object.getOwnPropertyDescriptor(domObject, "_x");
+	}
+	catch (error) {
+		global.Object._getOwnPropertyDescriptor = global.Object.getOwnPropertyDescriptor;
+		global.Object.getOwnPropertyDescriptor = null; // so our method gets added to global Object
+		Object.getOwnPropertyDescriptor = override_lookupProperty;
 	}	
 }
-else Object.defineProperty = (global.Object.prototype.__defineGetter__) ? legacy_defineProperty :	ie6_defineProperty;
+else Object.getOwnPropertyDescriptor = (global.Object.prototype.__defineSetter__) ? pseudo_lookupProperty : legacy_lookupProperty;
 
-	
+/*
+ TODO should we do more thorough param checking?
+ See https://developer.mozilla.org/en/Core_JavaScript_1.5_Reference/Global_Objects/Object/defineProperties
+*/
+Object.defineProperties = function(object, props) {
+	for (var name in props) {
+	  if (!props.hasOwnProperty(name)) continue;
+	  Object.defineProperty(object, props[name]);
+	}
+	return object;
+}
+
+Object.keys = function(object) {
+	var keys = [];
+	for (var key in object) if (!object.hasOwnProperty || object.hasOwnProperty(key)) keys.push(key);
+	return keys;
+}
+
+/* FIXME
+Object.getOwnPropertyNames = function(object) {
+	var keys = [];
+	for (var key in object) if (!object.hasOwnProperty || object.hasOwnProperty(key)) keys.push(key);
+	return keys;
+}
+*/
+
+Object.create = function(proto, props) {
+	if (typeof proto !== "object" || proto !== null) throw "Invalid prototype"; // FIXME new TypeError
+	var constructor = function() {}
+	constructor.prototype = proto;
+	var object = new constructor;
+	return Object.defineProperties(object, props);
+}
+
 // NOTE non-standard Object methods
 Object.copy = function(dest, source, fields, override) {
 	function _copy(dst, src, name, over) {
@@ -96,13 +182,13 @@ Object.toLoggerString = function(object) { // NOTE the complexity here is work-a
 		var slot = object[field];
 		var t = typeof slot;
 		var sz;
-		try { if (t == "object" && slot.length) t = "array"; }
+		try { if (t === "object" && slot.length) t = "array"; }
 		catch (error) { }
 		try { var sz = "" + slot; }
 		catch (error) { t = "null"; }
-		if (t == "function") string += field + ": " + "function() {}" + "\n";
-		else if (t == "array") string += field + ": " + "[ " + slot + " ]" + "\n";
-		else if (t == "null") string += field + ": " + "null" + "\n";
+		if (t === "function") string += field + ": " + "function() {}" + "\n";
+		else if (t === "array") string += field + ": " + "[ " + slot + " ]" + "\n";
+		else if (t === "null") string += field + ": " + "null" + "\n";
 		else string += field + ": " + slot + "\n";
 	}
 	return string;
@@ -111,15 +197,26 @@ Object.toLoggerString = function(object) { // NOTE the complexity here is work-a
 Object.forEach = function(object, callback, context) {
 	for (var key in object) {
 		var val = object[key];
-		if (typeof val != "function") callback.call(context, val, key, object);
+		if (typeof val !== "function") callback.call(context, val, key, object);
 	}
 }
+
+
+var String = function() {}
+String.prototype = {};
+String.prototype.trim = function() {
+ return this.replace(/^\s\s*/, "").replace(/\s*\s$/, "");
+}
+
 
 var Array = function() {
 	return global.Array.apply(this, arguments);
 }
 Array.prototype = [];
 
+/*
+ TODO optimize for sparse arrays
+*/
 Array.prototype.indexOf = function(testVal, start) {
 	var array = this;
 	var n = array.length;
@@ -145,7 +242,7 @@ Array.prototype.every = function(callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
-		if (val == null) continue;
+		if (typeof val === "undefined") continue;
 		if (!callback.call(context, val, i, array)) return false;
 	}
 	return true;
@@ -155,7 +252,7 @@ Array.prototype.some = function(callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
-		if (val == null) continue;
+		if (typeof val === "undefined") continue;
 		if (callback.call(context, val, i, array)) return true;
 	}
 	return false;
@@ -165,7 +262,7 @@ Array.prototype.forEach = function(callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
-		if (val == null) continue;
+		if (typeof val === "undefined") continue;
 		callback.call(context, val, i, array);
 	}
 }
@@ -175,7 +272,7 @@ Array.prototype.filter = function(callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
-		if (val == null) continue;
+		if (typeof val === "undefined") continue;
 		callback.call(context, val, i, array) && out.push(val);
 	}
 	return out;
@@ -186,10 +283,41 @@ Array.prototype.map = function(callback, context) {
 	var n = array.length;
 	for (var i=0; i<n; i++) {
 		var val = array[i];
-		if (val == null) continue;
-		out[i] = callback.call(context, array[i], i, array);
+		if (typeof val === "undefined") continue;
+		out[i] = callback.call(context, val, i, array);
 	}
 	return out;
+}
+Array.prototype.reduce = function(callback, initial) {
+	var array = this;
+	var n = array.length;
+	var i = 0;
+	if (arguments.length <= 1) {
+		if (n <= 0) throw "Empty array and no initial value"; // FIXME new TypeError
+		initial = array[i++];
+	}
+	for (; i<n; i++) {
+		var val = array[i];
+		if (typeof val === "undefined") continue;
+		initial = callback(initial, val, i, array);
+	}
+	return initial;
+}
+
+Array.prototype.reduceRight = function(callback, initial) {
+	var array = this;
+	var n = array.length;
+	var i = n-1;
+	if (arguments.length <= 1) {
+		if (n <= 0) throw "Empty array and no initial value"; // FIXME new TypeError
+		initial = array[i--];
+	}
+	for (; i>=0; i--) {
+		var val = array[i];
+		if (typeof val === "undefined") continue;
+		initial = callback(initial, val, i, array);
+	}
+	return initial;
 }
 
 // NOTE non-standard Array methods
@@ -220,7 +348,7 @@ Array.some = function(array, callback, context) { return this.prototype.some.cal
 Array.compare = function(array1, array2, cmp) { return this.prototype.compare.call(array1, array2, cmp); }
 
 var Function = function() {
-		return global.Function.apply(this, arguments);
+	return global.Function.apply(this, arguments);
 }
 Function.prototype = function() {};
 
@@ -234,6 +362,7 @@ Function.prototype.bind = function(self) {
 
 return {
 	Object: Object,
+	String: String,
 	Array: Array,
 	Function: Function
 }
