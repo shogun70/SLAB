@@ -74,7 +74,7 @@ var EventSystem = function() {
 		delegate.attachEvent("onpropertychange", function(e) {
 			var event = e.srcElement.__event__;
 			var eventTarget = EventTarget(event.currentTarget);
-			var handlers = eventTarget.getListeners(event);
+			var handlers = eventTarget._getListeners(event);
 			var listener = handlers[event.listenerIndex].listener;
 			var rc = (listener.handleEvent) ?
 				listener.handleEvent(event) :
@@ -85,6 +85,9 @@ var EventSystem = function() {
 		head.insertBefore(delegate, head.firstChild);
 	}
 }
+
+EventSystem.isW3C = !!document.addEventListener;
+EventSystem.isIE = !!document.attachEvent;
 
 EventSystem.prototype.handleEvent = function(event, currentTarget) {
 	var target = currentTarget || event.currentTarget;
@@ -362,10 +365,10 @@ EventSystem.prototype._dispatchEvent = function(target, event) {
 	path.push(window);
 
 	function dispatch(current, event) {
+		if (!current.addEventListener) return;
 		var eventTarget = EventTarget(current);
-		if (!eventTarget) return;
 		event.currentTarget = current;
-		var n = eventTarget.getListeners(event).length;
+		var n = eventTarget._getListeners(event).length;
 		for (var i=0; i<n; i++) {
 			event.listenerIndex = i;
 			eventSystem.eventDelegate.__event__ = event;
@@ -567,8 +570,7 @@ var eventModuleMap = {
 	"MutationEvents": "MutationEvent"
 }
 
-
-var DocumentEvent = function() {} // TODO Document.addImplementation(DocumentEvent);
+var DocumentEvent = function() {} // TODO Document.addBinding(DocumentEvent);
 if (document.createEvent) {{ // Upgrade if less than DOM3
 
 DocumentEvent.prototype.createEvent = function(module) {
@@ -624,41 +626,27 @@ document.createEvent = DocumentEvent.prototype.createEvent;
 
 }}
 
-
-var EventTarget = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return arguments.callee.getInterface(target);
-	else arguments.callee.prototype.xblCreate.call(this, target);
+var EventTarget = function(node) {
+	return EventTarget.getInterface(node);
 }
 EventTarget.interfaceLookup = new Array(13); // NOTE potentially one for every node type + Window
-EventTarget.getInterface = function(target) {
-	var nodeType = (target == window) ? 0 : target.nodeType;
+EventTarget.getInterface = function(node) {
+	var nodeType = (node === window) ? 0 : node.nodeType;
 	var lookup = this.interfaceLookup[nodeType];
-	return (lookup) ? lookup(target) : null;	
+	return (lookup) ? lookup(node) : null;	
 }
 EventTarget.methods = ["addEventListener", "removeEventListener", "dispatchEvent"];
-EventTarget.prototype.xblCreate = function(target) {
-	this.target = target;
-	var xblPublic = EventTarget.methods;
-	Meeko.stuff.domSystem.hideInterface(target, xblPublic);
-	Meeko.stuff.domSystem.bindInterface(target, this, xblPublic, true); // NOTE override on W3C systems
-	this.listenerTable = {};	
-}
-EventTarget.prototype.xblDestroy = function(target) {
-	this.target = null;
-	this.listenerTable = {};	
-	var xblPublic = EventTarget.methods;
-	Meeko.stuff.domSystem.releaseInterface(target, this, xblPublic, true);
-	Meeko.stuff.domSystem.restoreInterface(target, xblPublic);
-}
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
 	var capture = (useCapture) ? 1 : 0;
-	if (!this.listenerTable[type]) this.listenerTable[type] = [ [], [] ];
-	var handlers = this.listenerTable[type][capture];
+	var table = this._listenerTable;
+	if (!table) table = this._listenerTable = {};
+	var listeners = table[type];
+	if (!listeners) listeners = table[type] = [ [], [] ];
+	var handlers = listeners[capture];
 	var fn = function(event) {
 		return (listener.handleEvent) ?
 			listener.handleEvent(event) :
-			listener.call(null, event);
+			listener(event);
 	}
 	var handler = {
 		fn: fn,
@@ -669,8 +657,9 @@ EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
 }
 EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
 	var capture = (useCapture) ? 1 : 0;
-	if (!this.listenerTable[type]) return;
-	var handlers = this.listenerTable[type][capture];
+	var table = this._listenerTable, listeners = table && table[type];
+	if (!listeners) return;
+	var handlers = listeners[capture];
 	for (var i=handlers.length-1; i>=0; i--) {
 		var handler = handlers[i];
 		if (handler.listener !== listener) continue;
@@ -680,70 +669,211 @@ EventTarget.prototype.removeEventListener = function(type, listener, useCapture)
 }
 EventTarget.prototype.dispatchEvent = function(event) { // FIXME
 }
-EventTarget.prototype.getListeners = function(event) {
+EventTarget.prototype._getListeners = function(event) {
 	var type = event.type,
 	capture = (event.eventPhase === 1) ? 1 : 0;
-	var listeners = this.listenerTable[type];
+	var table = this._listenerTable, listeners = table && table[type];
 	return (listeners) ?
 		listeners[capture] :
 		[];
 }
 
 if (window.addEventListener) {{
-EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window", EventTarget);
-EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
 EventTarget.prototype._addEventListener = EventTarget.prototype.addEventListener;
 EventTarget.prototype._removeEventListener = EventTarget.prototype.removeEventListener;
 EventTarget.prototype._dispatchEvent = EventTarget.prototype.dispatchEvent;
 EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
 	var fn = this._addEventListener(type, listener, useCapture);
-	this.target._addEventListener(type, fn, useCapture);
+	this.domNode._addEventListener(type, fn, useCapture);
 }
-EventTarget.prototype._removeEventListener = function(type, listener, useCapture) {
+EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
 	var fn = this._removeEventListener(type, listener, useCapture);
-	this.target._removeEventListener(type, fn, useCapture);
+	this.domNode._removeEventListener(type, fn, useCapture);
 }
 EventTarget.prototype.dispatchEvent = function(event) {
-	this.target._dispatchEvent(event);
+	this.domNode._dispatchEvent(event);
 }
+EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addBinding("Window", EventTarget);
+EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addBinding("Document", EventTarget);
 }}
+
 else if (window.attachEvent) {{
-EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addImplementation("Window", EventTarget);
-EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", EventTarget);
-EventTarget.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Element", EventTarget);
-EventTarget.prototype._xblCreate = EventTarget.prototype.xblCreate;
 EventTarget.prototype._addEventListener = EventTarget.prototype.addEventListener;
-EventTarget.prototype._removeEventListener = EventTarget.prototype.removeEventListener;
 EventTarget.prototype._dispatchEvent = EventTarget.prototype.dispatchEvent;
-EventTarget.prototype.xblCreate = function(target) {
-	this._xblCreate(target);
-	if (target.nodeType != Node.ELEMENT_NODE) return;
-	var eventTarget = this;
-	this.onattrmodified = function(srcEvent) { // FIXME re-write for new event handling implementation
-		var target = eventTarget.target;
-		var attrName = srcEvent.propertyName;
-		var newValue = target[attrName];
-		switch (typeof newValue) {
-			case "string": case "number": case "boolean": case "undefined": break;
-			case "object": if (null === newValue) break;
-			default: return;
-		}
-		var prevValue = this.prevValues[attrName];
-		this.prevValues[attrName] = newValue;
-		var attrChange = (newValue != null) ? ((prevValue != null) ? 1 : 2) : 3; // MODIFICATION, ADDITION, REMOVAL;
-		var event = document.createEvent("MutationEvent");
-		event.initMutationEvent("DOMAttrModified", true, false, null, prevValue, newValue, attrName, attrChange);
-		target.dispatchEvent(event);
+EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
+	var pseudoEvent = {
+		type: type,
+		eventPhase: (useCapture) ? 1 : 3
+	};
+	if (this._getListeners(pseudoEvent).length <= 0) eventSystem.registerEvent(type);
+	this._addEventListener(type, listener, useCapture);
+}
+EventTarget.prototype.dispatchEvent = function(event) {
+	eventSystem.dispatchEvent(this.domNode, event);
+}
+
+// TODO this is coarse feature detection -
+// relying on attachEvent to indicate non-bubbling submit, reset, change events.
+// Can we do better??
+var eventTable = { // TODO move to top
+	"focus": { cancelable: false, bubbles: false, module: "UIEvent" },
+	"blur": { cancelable: false, bubbles: false, module: "UIEvent" },
+	"change": { cancelable: false, bubbles: true, module: "Event" },
+	"submit": { cancelable: true, bubbles: true, module: "Event" },
+	"reset": { cancelable: true, bubbles: true, module: "Event" }	
+}
+
+var handler = function(srcEvent) {
+	var type = srcEvent.type;
+	var conf = eventTable[type];
+	var event = document.createEvent(conf.module);
+	event.initEvent(type, conf.bubbles, conf.cancelable);
+	return eventSystem.dispatchEvent(srcEvent.srcElement, event);
+}
+
+EventTarget.prototype.domAttach = function() {
+	var node = this.domNode;
+	if (node.nodeType !== 1) return;
+	var tagName = node.tagName.toLowerCase();
+	node.attachEvent("onfocus", handler);
+	node.attachEvent("onblur", handler);
+	switch (tagName) {
+		case "select": case "input": case "textarea":
+			node.attachEvent("onchange", handler);
+			if (node.form) EventTarget(node.form);
+			break;
+		case "form":
+			node.attachEvent("onsubmit", handler);
+			node.attachEvent("onreset", handler);
+			break;
 	}
-	this.prevValues = {}; // for onattrmodified
-	var atts = this.target.attributes;
-	for (var n=atts.length, i=0; i<n; i++) {
-		var att = atts[i];
-		if (att.specified) this.prevValues[att.nodeName] = att.nodeValue;
+}
+document.attachEvent("onfocusin", function(srcEvent) {
+	EventTarget(srcEvent.srcElement);
+});
+
+EventTarget.interfaceLookup[0] = Meeko.stuff.domSystem.addBinding("Window", EventTarget);
+EventTarget.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addBinding("Document", EventTarget);
+EventTarget.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addBinding("Element", EventTarget);
+}}
+else { throw "EventTarget only implemented with addEventListener or attachEvent"; }
+
+var DOMMutation;
+if (!EventSystem.isW3C && EventSystem.isIE) DOMMutation = (function() { // DOMMutation is only required on IE
+
+var DOMMutation = function(node) {
+	return DOMMutation.getInterface(node);
+}
+
+DOMMutation.prototype.cloneNode = function(deep) {
+	var node = this.domNode;
+	var lookup = {
+		"thead": [ "table" ],
+		"tbody": [ "table" ],
+		"tfoot": [ "table" ],
+		"colgroup": [ "table" ],
+		"col": [ "table", "colgroup" ],
+		"tr": [ "table", "tbody" ],
+		"td": [ "table", "tbody", "tr" ],
+		"th": [ "table", "tbody", "tr" ],
+		"option": [ "select" ],
+		"li": [ "ul" ]
 	}
+	var tree = lookup[node.tagName.toLowerCase()] || [];
+	var frag = document.createElement("div");
+	var begin = "", end = "";
+	for (var n=tree.length, i=0; i<n; i++) begin += "<" + tree[i] + ">";
+	for (var i=tree.length-1; i>=0; i--) end += "</" + tree[i] + ">";
+	frag.innerHTML = begin + (deep ? node.outerHTML : node._cloneNode(false).outerHTML) + end;
+	var clone = frag.firstChild;
+	for (var i=0; i<tree.length; i++) clone = clone.firstChild;
+	clone.parentNode.removeChild(clone);
+	return clone;
+}
+
+DOMMutation.prototype.insertBefore = function(child, ref) { // FIXME notify if child already in document?
+	var node = this.domNode;
+	var isEntering = document.compareDocumentPosition(child) & 0x01;
+	var result = node._insertBefore(child, ref);
+	if (isEntering) notify("DOMNodeInserted", child, node);
+	return result;
+}
+
+DOMMutation.prototype.replaceChild = function(child, old) { // FIXME notify if child already in document?
+	var node = this.domNode;
+	var isEntering = document.compareDocumentPosition(child) & 0x01; 
+	notify("DOMNodeRemoved", old, node); // FIXME
+	var result = node._replaceChild(child, old);
+	if (isEntering) notify("DOMNodeInserted", child, node);
+	return result;
+}
+
+DOMMutation.prototype.removeChild = function(old) {
+	var node = this.domNode;
+	notify("DOMNodeRemoved", old, node);
+	var result = node._removeChild(old);
+	return result;
+}
+
+DOMMutation.prototype.appendChild = function(child) { // FIXME notify if child already in document?
+	var node = this.domNode;
+	var isEntering = document.compareDocumentPosition(child) & 0x01; 
+	var result = node._appendChild(child);
+	if (isEntering) notify("DOMNodeInserted", child, node);
+	return result;
+}
+
+DOMMutation.prototype.insertAdjacentHTML = function(pos, html) {
+	var element = this.domNode;
+	var lookup = {
+		"beforebegin": [ "previousSibling", false ],
+		"afterbegin": [ "firstChild", true ],
+		"beforeend": [ "lastChild", false ],
+		"afterend": [ "nextSibling", true ]
+	}
+	var conf = lookup[pos.toLowerCase()];
+	if (!conf) throw pos + " not valid position for insertAdjacentHTML";
+	var relType = conf[0], after = conf[1], begin = element[relType], end;
+	var result = element._insertAdjacentHTML(pos, html);
+	if (after) end = begin, begin = element[relType];
+	else end = element[relType].nextSibling, begin = (begin) ? begin.nextSibling : end.parentNode.firstChild;
+	for (var node=begin; node!=end; node=node.nextSibling) {
+		if (Node.ELEMENT_NODE != node.nodeType) continue;
+		notify("DOMNodeInserted", node, element);
+	}
+	return result;
+}
+
+var notify = function(type, node, relatedNode) {
+	if (!node.contains) return; // FIXME not handling text-nodes for now
+	if (!document.documentElement.contains(node)) return;
+	var event = document.createEvent("MutationEvent");
+	event.initMutationEvent(type, true, false, relatedNode);
+	eventSystem.dispatchEvent(node, event);
+}
+
 /*
+DOMMutation.prototype.domAttach = function(element) {
+	var node = this.domNode;
+	this.getAttributes = getAttributes;
+	this._prevValues = this.getAttributes(); // for onpropertychange
+	node.attachEvent("onpropertychange", onpropertychange);
+}
+var onInnerHTML = function(srcEvent) { // TODO handle element.innerHTML += "..."
+	var element = srcEvent.srcElement;
+	// FIXME should have "DOMNodeRemoved" events too
+	for (var node=element.firstChild; node; node=node.nextSibling) {
+		if (Node.ELEMENT_NODE != node.nodeType) continue;
+		notify("DOMNodeInserted", node, element);
+	}
+}
+
+var getAttributes = function() { // NOTE private method
+	var node = this.domNode;
+	if (node === document.documentElement); return getSpecifiedAttributes(node);
 	// this approach is quicker, but crashes the browser on document.documentElement
-	var clone = this.target.cloneNode(false);
+	var values = {};
+	var clone = node._cloneNode(false);
 	var text = clone.outerHTML.replace(/^\S+/, "");
 	var rex = /\s+([-_a-zA-Z0-9]+)=(?:"([^"]*)"|'([^']*)'|([^\s>]+))(\>)?/g;
 	RegExp.lastIndex = 0;
@@ -751,237 +881,47 @@ EventTarget.prototype.xblCreate = function(target) {
 	while (m = rex.exec(text)) {
 		var attrName = m[1];
 		var val = m[2]; if ("" == val) val = m[3]; if ("" == val) val = m[4];
-		this.prevValues[attrName] = val;
+		values[attrName] = val;
 		if (">" == m[5]) break; 
 	}
-*/
+	return values;
 }
 
-EventTarget.prototype.addEventListener = function(type, listener, useCapture) {
-	var pseudoEvent = {
-		type: type,
-		eventPhase: (useCapture) ? 1 : 3
-	};
-	if (this.getListeners(pseudoEvent).length <= 0) {
-		eventSystem.registerEvent(type);
-		if (type == "DOMAttrModified") this.target.attachEvent("onpropertychange", this.onattrmodified);
+var getSpecifiedAttributes = function(node) {
+	var values = {};
+	var atts = node.attributes;
+	for (var n=atts.length, i=0; i<n; i++) {
+		var att = atts[i];
+		if (att.specified) values[att.nodeName] = att.nodeValue;
 	}
-	this._addEventListener(type, listener, useCapture);
-}
-EventTarget.prototype.removeEventListener = function(type, listener, useCapture) {
-	this._removeEventListener(type, listener, useCapture);
-	var pseudoEvent = {
-		type: type,
-		eventPhase: (useCapture) ? 1 : 3
-	};
-	if (type == "DOMAttrModified" && this.getListeners(pseudoEvent).length <= 0) this.target.detachEvent("onpropertychange", this.onattrmodified);
-}
-EventTarget.prototype.dispatchEvent = function(event) {
-	eventSystem.dispatchEvent(this.target, event);
-}
-}}
-else { throw "EventTarget only implemented with addEventListener of attachEvent"; }
-
-
-if (!document.addEventListener && document.attachEvent) {{ // DOMMutation is only required on IE
-
-var DOMMutation = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return arguments.callee.getInterface(target);
-	else arguments.callee.prototype.xblCreate.call(this, target);
+	return values;
 }
 
-DOMMutation.interfaceLookup = new Array(13); // NOTE potentially one for every node type + Window
-DOMMutation.interfaceLookup[Node.DOCUMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Document", DOMMutation);
-DOMMutation.interfaceLookup[Node.ELEMENT_NODE] = Meeko.stuff.domSystem.addImplementation("Element", DOMMutation);
-DOMMutation.getInterface = function(target) {
-	var nodeType = (target == window) ? 0 : target.nodeType;
-	var lookup = this.interfaceLookup[nodeType];
-	return (lookup) ? lookup(target) : null;
-}
-DOMMutation.methods = ["insertBefore", "replaceChild", "removeChild", "appendChild", "cloneNode"];
-
-DOMMutation.prototype.xblCreate = function(element) {
-	var domMutation = this;
-	this.boundElement = element;
-	Meeko.stuff.domSystem.hideInterface(element, DOMMutation.methods);
-	Meeko.stuff.domSystem.bindInterface(element, this, DOMMutation.methods, true);
-	this.domMutation_listener = function(event) { domMutation.onpropertychange(event); }
-	element.attachEvent("onpropertychange", this.domMutation_listener);
-}
-DOMMutation.prototype.xblDestroy = function() {
-	var element = this.boundElement;
-	element.detachEvent("onpropertychange", this.domMutation_listener);
-	Meeko.stuff.domSystem.releaseInterface(element, this, DOMMutation.methods, true);
-	Meeko.stuff.domSystem.restoreInterface(element, DOMMutation.methods);
-}
-
-DOMMutation.prototype.cloneNode = function(deep) {
-	var element = this.boundElement;
-	var lookup = {
-		"thead": [ "table" ],
-		"tbody": [ "table" ],
-		"tfoot": [ "table" ],
-		"colgroup": [ "table" ],
-		"col": [ "table", "colgroup" ],
-		"tr": [ "table" ],
-		"td": [ "table", "tr" ],
-		"option": [ "select" ],
-		"li": [ "ul" ]
+var onpropertychange = function(srcEvent) { // FIXME re-write for new event handling implementation
+	if (srcEvent.propertyName === "innerHTML") return onInnerHTML(srcEvent);
+	var element = srcEvent.srcElement;
+	var attrName = srcEvent.propertyName;
+	var newValue = element[attrName];
+	switch (typeof newValue) { // filter out non-attribute properties
+		case "string": case "number": case "boolean": case "undefined": break;
+		case "object": if (null == newValue) break;
+		case "function": default: return;
 	}
-	var tree = lookup[element.tagName.toLowerCase()];
-	var frag = document.createElement("div");
-	var begin = "", end = "";
-	for (var n=tree.length, i=0; i<n; i++) begin += "<" + tree[i] + ">";
-	for (var i=tree.length-1; i>=0; i--) end += "</" + tree[i] + ">";
-	frag.innerHTML = begin + (deep ? element.outerHTML : element.cloneNode(false).outerHTML) + end;
-	var clone = frag.firstChild;
-	for (var i=0; i<tree.length; i++) {
-		clone = clone.firstChild;
-	}
-	clone.parentNode.removeChild(clone);
-	frag = null;
-	return clone;
-}
-
-DOMMutation.prototype.onpropertychange = function(event) {
-	if (event.propertyName == "innerHTML") {
-		var element = this.boundElement;
-		// FIXME should have "DOMNodeRemoved" events too
-		for (var node=element.firstChild; node; node=node.nextSibling) {
-			if (Node.ELEMENT_NODE != node.nodeType) continue;
-			if (node["_Element"]) continue; // FIXME orthogonality - how to tell if node is newly inserted??
-			this.notify("DOMNodeInserted", node, element);
-		}
-	}
-}
-DOMMutation.prototype.insertBefore = function(node, ref) {
-	var result = this.boundElement._insertBefore(node, ref);
-	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
-	return result;
-}
-
-DOMMutation.prototype.replaceChild = function(node, old) {
-	this.notify("DOMNodeRemoved", old, this.boundElement); // FIXME
-	var result = this.boundElement._replaceChild(node, old);
-	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
-	return result;
-}
-
-DOMMutation.prototype.removeChild = function(old) {
-	var element = this.boundElement;
-	this.notify("DOMNodeRemoved", old, this.boundElement); // FIXME
-	var result = element._removeChild(old);
-	return result;
-}
-
-DOMMutation.prototype.appendChild = function(node) {
-	var result = this.boundElement._appendChild(node);
-	this.notify("DOMNodeInserted", node, this.boundElement); // FIXME
-	return result;
-}
-
-DOMMutation.prototype.notify = function(type, node) {
-	if (!node.contains) return; // FIXME not handling text-nodes for now
-	if (!document.documentElement.contains(node)) return;
+	var binding = DOMMutation(element);
+	var prevValue = binding._prevValues[attrName];
+	binding._prevValues[attrName] = newValue;
+	var attrChange = (newValue != null) ? ((prevValue != null) ? 1 : 2) : 3; // MODIFICATION, ADDITION, REMOVAL;
 	var event = document.createEvent("MutationEvent");
-	event.initMutationEvent(type, true, false, this.boundElement);
-	eventSystem.dispatchEvent(node, event);
+	event.initMutationEvent("DOMAttrModified", true, false, null, prevValue, newValue, attrName, attrChange);
+	element.dispatchEvent(event);
 }
+*/
 
-}}
+DOMMutation.getInterface = Meeko.stuff.domSystem.addBinding("Element", DOMMutation);
 
+return DOMMutation;
 
-if (!document.addEventListener && document.attachEvent) {{ // *Bubbler is only required on IE
-// TODO this is coarse feature detection -
-// relying on attachEvent to indicate non-bubbling submit, reset, change events.
-// Can we do better??
-document.attachEvent("onfocusin", function(srcEvent) {
-	Meeko.stuff.domSystem.attach(srcEvent.srcElement);
-})
-
-var FocusBubbler = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return arguments.callee.getInterface(target);
-	else arguments.callee.prototype.xblCreate.call(this, target);
-}
-
-FocusBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLElement", FocusBubbler);
-FocusBubbler.prototype.xblCreate = function(target) {
-	this.target = target;
-	var bubbler = this;
-	this.focusBubbler_listener = function(srcEvent) {
-		var event = document.createEvent("Event");
-		event.initEvent(srcEvent.type, false, true);
-		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
-	}
-	target.attachEvent("onfocus", this.focusBubbler_listener);
-}
-
-FocusBubbler.prototype.xblDestroy = function(target) {
-	target.detachEvent("onfocus", this.focusBubbler_listener);
-	this.focusBubbler_listener = null;
-	this.target = null;
-}
-
-var ChangeBubbler = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return arguments.callee.getInterface(target);
-	else arguments.callee.prototype.xblCreate.call(this, target);
-}
-ChangeBubbler.interfaceLookup = {};
-ChangeBubbler.interfaceLookup["input"] = Meeko.stuff.domSystem.addImplementation("HTMLInputElement", ChangeBubbler);
-ChangeBubbler.interfaceLookup["select"] = Meeko.stuff.domSystem.addImplementation("HTMLSelectElement", ChangeBubbler);
-ChangeBubbler.getInterface = function(target) {
-	var tagName = target.tagName.toLowerCase();
-	var lookup = this.interfaceLookup[tagName];
-	return (lookup) ? lookup(target) : null;
-}
-
-ChangeBubbler.prototype.xblCreate = function(target) {
-	this.target = target;
-	var bubbler = this;
-	this.changeBubbler_listener = function(srcEvent) {
-		var event = document.createEvent("Event");
-		event.initEvent(srcEvent.type, true, true);
-		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
-	}
-	target.attachEvent("onchange", this.changeBubbler_listener);
-}
-
-ChangeBubbler.prototype.xblDestroy = function(target) {
-	target.detachEvent("onchange", this.changeBubbler_listener);
-	this.changeBubbler_listener = null;
-	this.target = null;
-}
-
-var SubmitBubbler = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return arguments.callee.getInterface(target);
-	else arguments.callee.prototype.xblCreate.call(this, target);
-}
-
-SubmitBubbler.getInterface = Meeko.stuff.domSystem.addImplementation("HTMLFormElement", SubmitBubbler);
-SubmitBubbler.prototype.xblCreate = function(target) {
-	this.target = target;
-	var bubbler = this;
-	this.submitBubbler_listener = function(srcEvent) {
-		var event = document.createEvent("Event");
-		event.initEvent(srcEvent.type, true, true);
-		return eventSystem.dispatchEvent(srcEvent.srcElement, event);
-	}
-	target.attachEvent("onsubmit", this.submitBubbler_listener);
-	target.attachEvent("onreset", this.submitBubbler_listener);
-}
-
-SubmitBubbler.prototype.xblDestroy = function(target) {
-	target.detachEvent("onsubmit", this.submitBubbler_listener);
-	target.detachEvent("onreset", this.submitBubbler_listener);
-	this.submitBubbler_listener = null;
-	this.target = null;
-}
-
-}}
+})(); //=> DOMMutation
 
 
 Meeko.stuff.eventSystem = eventSystem; // FIXME back-door to virtually everything
