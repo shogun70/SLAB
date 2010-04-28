@@ -26,29 +26,26 @@ var HTMLTableSectionElement = function() {}
 var HTMLTableRowElement = function() {}
 
 
-if (document.documentElement.classList == null) {{
+if (document.documentElement.classList == null) {
 
-var HTML5Element = function(target) {
-	if (null == target) return null; // TODO throw ??
-	if (this == window) return null;
-	else arguments.callee.prototype.xblCreate.call(this, target);
+var HTML5Element = function(node) {
+	return HTML5Element.getInterface(node);
 }
-HTML5Element.prototype.xblCreate = function(target) {
+HTML5Element.prototype.domAttach = function() {
+	var node = this.domNode;
 	var getClassName = function() { return this.className; };
 	var setClassName = function(val) { this.className = val; };
-	this.classList = new DOMTokenList(getClassName.bind(target), setClassName.bind(target));
-	Meeko.stuff.domSystem.bindInterface(target, this, ["classList"]);
+	this.classList = new DOMTokenList(getClassName.bind(node), setClassName.bind(node));
 }
-HTML5Element.prototype.xblDestroy = function(target) {
-	// FIXME Meeko.stuff.domSystem.unbindInterface()
-	Meeko.stuff.domSystem.releaseInterface(target, this, ["classList"]);
-	this.classList.xblDestroy(); // FIXME is this necessary
-	this.classList = null;
-}
+HTML5Element.prototype.classList = {};
+/*
+Object.defineProperty(HTML5Element.prototype, "classList", {
+	get: function() { return this._classList; }
+});
+*/
+HTML5Element.getInterface = Meeko.stuff.domSystem.addBinding("HTMLElement", HTML5Element);
 
-Meeko.stuff.domSystem.addImplementation("HTMLElement", HTML5Element);
-}}
-
+} //=> HTML5Element
 
 return {
 	HTMLCollection: HTMLCollection,

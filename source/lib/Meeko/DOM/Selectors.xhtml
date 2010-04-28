@@ -12,12 +12,10 @@ Meeko.stuff.xplSystem.createNamespace("Meeko.DOM.Selectors");
 Meeko.DOM.Selectors = (function() {
 
 var NodeSelector = function(target) {
-	if (!(this instanceof arguments.callee)) return new arguments.callee(target);
-
-	if (target) {
-		if (target.nodeType) this._target = target;
-		else throw "Target does not have NodeSelector interface";
-	}
+	if (target.querySelector) return target;
+	if (target.nodeType == null) throw "Target does not have NodeSelector interface";
+	if (!(this instanceof NodeSelector)) return new NodeSelector(target);
+	this._target = target;
 }
 NodeSelector.querySelector = function(target, selectorText) { return NodeSelector(target).querySelector(selectorText); }
 NodeSelector.querySelectorAll = function(target, selectorText) { return NodeSelector(target).querySelectorAll(selectorText); }
@@ -32,15 +30,16 @@ NodeSelector.prototype.querySelectorAll = function(selectorText) {
 	return getElementsBySelector(target, selectorText, false);
 }
 var ElementSelector = function(target) {
-	if (!(this instanceof arguments.callee)) return new arguments.callee(target);
-
-	if (target) {
-		if (target.nodeType == 1 /* Node.ELEMENT_NODE */) this._target = target;
-		else throw "Target does not have ElementSelector interface"; 
-	}
+	if (target.matchesSelector) return target;
+	if (target.nodeType !== 1) throw "Target does not have ElementSelector interface";
+	if (!(this instanceof ElementSelector)) return new ElementSelector(target);
+	this._target = target;
 }
-ElementSelector.prototype = new NodeSelector();
+ElementSelector.querySelector = function(target, selectorText) { return ElementSelector(target).querySelector(selectorText); }
+ElementSelector.querySelectorAll = function(target, selectorText) { return ElementSelector(target).querySelectorAll(selectorText); }
 ElementSelector.matchesSelector = function(target, selectorText) { return ElementSelector(target).matchesSelector(selectorText); }
+ElementSelector.prototype.querySelector = NodeSelector.prototype.querySelector;
+ElementSelector.prototype.querySelectorAll = NodeSelector.prototype.querySelectorAll;
 ElementSelector.prototype.matchesSelector = function(selectorText) {
 	var target = this._target || this;
 	if (null == selectorText) return false;

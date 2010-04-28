@@ -235,13 +235,13 @@ NodeIterator.prototype.forEach = function(fn, context) {
 	return NodeIterator.forEach(this, fn, context);
 }
 
-var documentTraversal = {};
-documentTraversal.createTreeWalker = function() {
+var DocumentTraversal = function() {};
+DocumentTraversal.prototype.createTreeWalker = function() {
 	var instance = new TreeWalker(privateKey);
 	instance._init.apply(instance, arguments);
 	return instance;
 }
-documentTraversal.createNodeIterator = function() {
+DocumentTraversal.prototype.createNodeIterator = function() {
 	var instance = new NodeIterator(privateKey);
 	instance._init.apply(instance, arguments);
 	return instance;
@@ -251,7 +251,7 @@ return {
 	NodeFilter: NodeFilter,
 	TreeWalker: TreeWalker,
 	NodeIterator: NodeIterator,
-	document: documentTraversal
+	Document: DocumentTraversal
 }
 })();
 
@@ -272,7 +272,7 @@ if (!iter.forEach) {
 	}
 }
 }}
-catch (error) { document.createTreeWalker = Meeko.DOM.Traversal.document.createTreeWalker; }
+catch (error) { document.createTreeWalker = Meeko.DOM.Traversal.Document.prototype.createTreeWalker; }
 
 try {{
 var iter = document.createNodeIterator(document, NodeFilter.SHOW_ALL, null, false);
@@ -289,7 +289,7 @@ if (!iter.forEach) {
 	}
 }
 }}
-catch (error) { document.createNodeIterator = Meeko.DOM.Traversal.document.createNodeIterator; }
+catch (error) { document.createNodeIterator = Meeko.DOM.Traversal.Document.prototype.createNodeIterator; }
 
 
 ]]>

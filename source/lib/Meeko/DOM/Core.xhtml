@@ -120,13 +120,6 @@ var DOMTokenList = function(getter, setter) { // TODO parameter checking
 		"get": function() { return this._getTokens().length; }
 	})
 };
-DOMTokenList.prototype.xblDestroy = function() { // FIXME is this needed??
-	this.valueOf = null;
-	this.toString = null;
-	this._getText = null;
-	this._setText = null;
-	this.length = null;
-}
 DOMTokenList.prototype.item = function(index) {
 	return this._getTokens()[index];
 }

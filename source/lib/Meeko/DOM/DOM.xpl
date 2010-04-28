@@ -79,7 +79,7 @@ else this.add(token);
 	<property name="classList">
 		<getter>return this._classList;</getter>
 	</property>
-	<method name="xblBindingAttached">
+	<method name="domAttach">
 		<body>
 this._classList = new DOMTokenList;
 this._classList.boundElement = this.boundElement;
@@ -130,7 +130,7 @@ return event;
 </class>
 
 <class name="ElementUI">
-	<method name="xblBindingAttached">
+	<method name="domAttach">
 		<body>
 this._meta = [];
 this._meta[0] = true; // enabled
