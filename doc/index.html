@@ -11,7 +11,7 @@ to promote standards-based, browser-agnostic web-development. </p>
 <p>SLAB upgrades the browser scripting environment to support the following features:</p>
 <ul>
 <li>New <code>Array</code> methods and generics: <code>every, filter, forEach, map, some</code> <sup>1</sup></li>
-<li><code>Function.prototype.bind()</code> - binds a function to an object <sup>2</sup></li>
+<li><code>Function.prototype.bind()</code> - binds a function to an object </li>
 <li><code>Object.defineProperty()</code> - specifies getter and/or setter functions for an object property <sup>3</sup></li>
 <li>DOM prototypes - <code>HTMLElement</code>, etc </li>
 <li><code><i>element</i>.classList</code> - provides methods to manipulate tokens in the <code>class</code> attribute </li>
@@ -24,7 +24,6 @@ to promote standards-based, browser-agnostic web-development. </p>
 <small><b>Notes:</b>
 <ol>
 <li>Array generics are non-standard</li>
-<li>bind() only accepts one argument - the target of the bind</li>
 <li>There are limitations for getter/setter functions on browsers that don't have <code><i>object</i>.__defineGetter__</code>, etc (mainly IE 6 &amp; 7).</li>
 <li>The <code>progress</code> event is non-standard on <code>document</code> objects</li>
 </ol>
@@ -71,19 +70,17 @@ document.addEventListener("submit", onSubmit, false);
 <small><b>Notes:</b><ol>
 <li>You can also link to a specific release or snapshot of the library.</li>
 <li>You could also download the library to your server and include it from there.</li>
-<li>DOM System initialization is triggered when the body element enters the document
-(if manual initialization hasn't occurred before).</li>
 </ol></small>
 <p>This example adds an encode() method to all form elements and adds an event-listener for submit-events
 that requests user-confirmation of form-submission.</p>
 <h2>Warnings</h2>
-<h3>Just-in-time Element binding for IE&lt;8</h3>
+<h3>Just-in-time Element binding for IE &lt; 8</h3>
 <p>SLAB applies fixes and enhancements to DOM prototypes (e.g. HTMLElement, HTMLFormElement) when they are provided by the browser. Older browsers, such as IE6 &amp; IE7, did not expose DOM prototypes to Javascript. On these browsers SLAB attempts to guarantee that elements are fixed before your code references them.</p>
 <p>This is done by over-riding DOM methods and properties used for accessing of elements, such as
 <code><i>document</i>.getElementById()</code>,
 <code><i>document|element</i>.querySelectorAll()</code> and
 <code><i>element</i>.children</code>.
-The following accessors are NOT supported for IE&lt;8:
+The following accessors are NOT supported for IE &lt; 8:
 <ul>
 <li><code><i>document</i>.getElementsByTagName()</code></li>
 <li><code><i>element</i>.childNodes</code></li>
@@ -98,7 +95,7 @@ The following accessors are NOT supported for IE&lt;8:
 <code><i>document|element</i>.querySelectorAll()</code> and
 <code><i>element</i>.children</code>, 
 return NodeList or HTMLCollection objects.
-On IE&lt;8 (and other older browsers) elements in these collections must be accessed with the <code>item()</code> method.
+On IE &lt; 8 (and other older browsers) elements in these collections must be accessed with the <code>item()</code> method.
 e.g. <code><i>element</i>.children.item(index)</code>. 
 SLAB does NOT support the commonly used array-notation,
 and, where possible, prevents access using array notation so that,
