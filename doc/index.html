@@ -40,7 +40,7 @@ to promote standards-based, browser-agnostic web-development. </p>
 /*
  * ECMAScript enhancements are available
  * DOM Prototypes are available
- * Custom DOM methods should be implemented before initializing DOM system
+ * Custom DOM methods must  be implemented before accessing affected nodes
  */
 HTMLFormElement.prototype.encode = function() {
  var txt = "";
@@ -50,15 +50,6 @@ HTMLFormElement.prototype.encode = function() {
  return txt;
 }
 
-/*
- * Initialize the DOM system
- */
-Meeko.stuff.domSystem.initialize(); <sup>3</sup>
-
-/*
- * Standard DOM interfaces now available on window and document,
- * and are (almost always) automatically available on elements
- */
 var onSubmit = function(event) {
  var form = event.target;
  var rc = confirm("Submit this data now?\n" + form.encode());
@@ -86,14 +77,13 @@ document.addEventListener("submit", onSubmit, false);
 <p>This example adds an encode() method to all form elements and adds an event-listener for submit-events
 that requests user-confirmation of form-submission.</p>
 <h2>Warnings</h2>
-<h3>Just-in-time Element binding</h3>
-<p>SLAB doesn't apply fixes and enhancements to elements at document load, which would potentially involve every element in the document.
-Instead it attempts to guarantee that elements are fixed before your code references them.
-This is done by over-riding DOM methods and properties for the accessing of elements, such as
+<h3>Just-in-time Element binding for IE&lt;8</h3>
+<p>SLAB applies fixes and enhancements to DOM prototypes (e.g. HTMLElement, HTMLFormElement) when they are provided by the browser. Older browsers, such as IE6 &amp; IE7, did not expose DOM prototypes to Javascript. On these browsers SLAB attempts to guarantee that elements are fixed before your code references them.</p>
+<p>This is done by over-riding DOM methods and properties used for accessing of elements, such as
 <code><i>document</i>.getElementById()</code>,
 <code><i>document|element</i>.querySelectorAll()</code> and
 <code><i>element</i>.children</code>.
-The following accessors are NOT supported:
+The following accessors are NOT supported for IE&lt;8:
 <ul>
 <li><code><i>document</i>.getElementsByTagName()</code></li>
 <li><code><i>element</i>.childNodes</code></li>
@@ -108,7 +98,7 @@ The following accessors are NOT supported:
 <code><i>document|element</i>.querySelectorAll()</code> and
 <code><i>element</i>.children</code>, 
 return NodeList or HTMLCollection objects.
-Elements in these collections must be accessed with the <code>item()</code> method.
+On IE&lt;8 (and other older browsers) elements in these collections must be accessed with the <code>item()</code> method.
 e.g. <code><i>element</i>.children.item(index)</code>. 
 SLAB does NOT support the commonly used array-notation,
 and, where possible, prevents access using array notation so that,
