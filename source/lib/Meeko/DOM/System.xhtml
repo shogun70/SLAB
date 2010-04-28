@@ -33,6 +33,24 @@ for (var name in safari2Prototypes) {
 	window[name].prototype = window[proto];
 }
 
+// IE8
+if (!window.HTMLElement && window.Element) window.HTMLElement = window.Element;
+if (!window.HTMLOptionsCollection && window.HTMLCollection) window.HTMLOptionsCollection = window.HTMLCollection;
+if (!window.Document && window.HTMLDocument) window.Document = window.HTMLDocument;
+
+// Special rules for Window since there is only one instance
+if (!window.Window) {
+	window.Window = function() {};
+	window.Window.prototype = window;
+}
+
+// And for Document since there is only one instance. FIXME not strictly true
+if (!window.Document) {
+	window.Document = function() {};
+	window.Document.prototype = document;
+}
+
+
 })();
 
 Meeko.stuff.domSystem = (function() {
@@ -118,22 +136,14 @@ var nodeStorage = {};
 
 var nodeManager = {};
 nodeManager.getStorage = function(node) {
-	return nodeStorage[node.slabID];
-}
-nodeManager.addNode = function(node, callback, context) {
-	if (this.getStorage(node)) { // FIXME why?
-		// logger.debug("Failure in addNode(): node already being managed " + node.tagName);
-		return false;
-	}
+	if (node.slabID) return nodeStorage[node.slabID];
 	var nodeType = (node != window) ? node.nodeType : 0;
 	var nodeList = nodeTable[nodeType];
 	var index = nodeList.length;
 	nodeList.push(node);
 	var slabID = "slab_" + nodeType + "_" + index;
-	node.slabID = slabID;
-	nodeStorage[slabID] = {};
-	if (callback) callback.call(context, node);
-	return true;
+	node.slabID = new String(slabID); // NOTE so that node cloning doesn't copy slabID
+	return nodeStorage[slabID] = {};
 }
 nodeManager.releaseNodesByType = function(type, callback, context) {
 	var nodeList = nodeTable[type];
@@ -147,26 +157,17 @@ nodeManager.releaseNodesByType = function(type, callback, context) {
 	nodeTable[type] = [];
 }
 
-/*
-elementBinding = function() {}
-	prototype: {},
-	implementation: function() {},
-		prototype: {},
-	handlers: []
-*/
-
-
 var privateKey = Math.random();
 
+function _bind(dst, src, name, over) {
+	if (src[name] == null) return;
+	if (!over && (dst.hasOwnProperty && dst.hasOwnProperty(name) || dst[name] != null)) return;
+	if ("function" == typeof src[name]) return dst[name] = function() { return src[name].apply(src, arguments); };
+	if (dst.__defineGetter__) return dst.__defineGetter__(name, function() { return src[name]; });
+	return dst[name] = src[name];
+}
 function bind(dest, source, fields, override) {
-	function _bind(dst, src, name, over) {
-		if (src[name] == null) return;
-		if (!over && (dst.hasOwnProperty && dst.hasOwnProperty(name) || dst[name] != null)) return;
-		if ("function" == typeof src[name]) dst[name] = function() { return src[name].apply(src, arguments); };
-		else if (dst.__defineGetter__) dst.__defineGetter__(name, function() { return src[name]; });
-		else dst[name] = src[name];
-	}
-	if (fields && fields.length) {
+	if (fields && fields.length != null) {
 		for (var n=fields.length, i=0; i<n; i++) {
 			var name = fields[i];
 			_bind(dest, source, name, override);
@@ -178,11 +179,11 @@ function bind(dest, source, fields, override) {
 	return dest;
 }
 
+function _release(dst, src, name) {
+	if (dst[name] == null) return;
+	dst[name] = null;
+}
 function release(dest, source, fields) {
-	function _release(dst, src, name) {
-		if (dst[name] == null) return;
-		dst[name] = null;
-	}
 	if (fields && fields.length) {
 		for (var n=fields.length, i=0; i<n; i++) {
 			var name = fields[i];
@@ -195,129 +196,203 @@ function release(dest, source, fields) {
 	return dest;
 }
 
-function hide(node, fields) {
-	for (var n=fields.length, i=0; i<n; i++) {
-		var name = fields[i];
-		var _name = "_" + name;
-		if (node[name]) {
-			node[_name] = node[name];
-			// delete node[name];
-			node[name] = null;
-		}
+function _hide(node, name) {
+	if (!node[name]) return;
+	var _name = "_" + name;
+	var __name = "__" + name;
+	if (typeof node[name] === "function" || node.nodeType) node[_name] = node[name];
+	else {
+		node[__name] = node[name];
+		node[_name] = function() { return this[__name].apply(this, arguments); }
 	}
+	// delete node[name];
+	node[name] = null;
+}
+function hide(node, fields) {
+	for (var n=fields.length, i=0; i<n; i++) _hide(node, fields[i]);
 }
 
+function _restore(node, name) {
+	var _name = "_" + name;
+	var __name = "__" + name;
+	if (node[_name]) {
+		node[name] = node[_name];
+		// delete node[_name];
+		node[_name] = null;
+	}
+	if (node[__name]) {
+		node[name] = node[__name];
+		// delete node[__name];
+		node[__name] = null;
+	}
+}
 function restore(node, fields) {
 	for (var n=fields.length, i=0; i<n; i++) {
 		var name = fields[i];
-		var _name = "_" + name;
-		if (node[_name]) {
-			node[name] = node[_name];
-			// delete node[name];
-			node[_name] = null;
-		}
 	}
 }
 
 /*
- DOMBinding is a ClassFactory for dom-binding classes. Usage:
-   var HTMLElement = new DOMBinding("HTMLElement");
- The DOMBinding class is then attached to a node with:
+ DOMInterface is a ClassFactory for dom-binding classes. Usage:
+   var HTMLElement = new DOMInterface("HTMLElement");
+ The DOMInterface class is then attached to a node with:
    HTMLElement.attach(node);
 */
-var DOMBinding = function(name) {
+function copyPrototype(node, prototype) { // FIXME orthogonality
+	function _copy(node, prototype, field) {
+		var _field = "_" + field;
+		if (node[field]) node[_field] = node[field];
+		var slot = prototype[field];
+		if (typeof slot === "function") node[field] = slot;
+		else {
+			slot = Object.getOwnPropertyDescriptor(prototype, field);
+			node[field] = slot.get.call(node);
+		}
+	}
+	for (var field in prototype) _copy(node, prototype, field);
+}
+
+function createBindingInstance(node, spec) {
+	var binding = new spec;
+	binding.domNode = node;
+	if (node.nodeType === 1) binding.boundElement = node;
+	if (binding.domAttach) binding.domAttach();
+	return binding;
+}
+
+var DOMInterface = function(name) {
 	this.name = name;
 	this.prototype = {};
-	this.interfaces = [];
-	this.implementation = function(node) {};
+	this.bindings = [];
 }
-DOMBinding.prototype.attach = function(node) {
-	if (this.baseBinding) this.baseBinding.attach(node);
-	Object.copy(node, this.prototype); // TODO optimize
-	var internal = new this.implementation(node);
-	for (var n=this.interfaces.length, i=0; i<n; i++) {
-		var ifaceSpec = this.interfaces[i];
-		var iface = new ifaceSpec(node);
-		internal[i] = iface;
-	}
-	var ifName = "_" + this.name;
-	nodeManager.getStorage(node)[ifName] = internal;
-}
-DOMBinding.prototype.detach = function(node) { // FIXME
+DOMInterface.prototype.getStorage = function(node) {
 	var ifName = "_" + this.name;
 	var store = nodeManager.getStorage(node);
-	var internal = store[ifName];
-	// delete node[ifName]
-	store[ifName] = null;
-	if (!internal) {
-		logger.warn("Failure removing non-existant "+this.name+" interface from "+node.tagName);
-		return;
-	}
-	for (var n=this.interfaces.length, i=n-1; i>=0; i--) {
-		var iface = internal[i];
-		if (iface && iface.xblDestroy) iface.xblDestroy(node);
-		internal[i] = null;
-	}
-	// FIXME Object.uncopy(node, this.prototype);
-	for (var field in this.prototype) {
-		if (node[field] === this.prototype[field]) node[field] = null;
-	}
-	if (this.baseBinding) this.baseBinding.detach(node);
+	var domStore = store[ifName];
+	// TODO should check if the iface is valid for node.
+	if (!domStore) domStore = store[ifName] = {};
+	return domStore;
 }
-DOMBinding.prototype.addImplementation = function(impl) {
-	this.interfaces.push(impl);
+DOMInterface.prototype.removeStorage = function(node) {
 	var ifName = "_" + this.name;
-	var index = this.interfaces.length - 1;
-	return function(node) {
-		var store = nodeManager.getStorage(node);
-		if (!store) return;
-		var domBinding = store[ifName];
-		if (!domBinding) return;
-		return domBinding[index];
+	var store = nodeManager.getStorage(node);
+	var domStore = store[ifName];
+	if (!domStore) throw "Failure removing non-existant "+this.name+" interface from "+node.tagName;
+	store[ifName] = null;
+	return domStore;
+}
+
+DOMInterface.prototype.attach = function(node) {
+	if (this.baseInterface) this.baseInterface.attach(node);
+	var domStore = this.getStorage(node);
+	for (var n=this.bindings.length, i=0; i<n; i++) {
+		if (domStore[i]) continue;
+		var bindingSpec = this.bindings[i];
+		if (!bindingSpec.prototype.domAttach) continue;
+		var binding = createBindingInstance(node, bindingSpec);
+		domStore[i] = binding;
+	}
+	var domPublic = Object.keys(this.prototype);
+	hide(node, domPublic);
+	copyPrototype(node, this.prototype);
+}
+DOMInterface.prototype.detach = function(node) { // FIXME
+	var ifName = "_" + this.name;
+	this.removeStorage(node);
+	if (this === window[this.name]) {
+		var domPublic = Object.keys(this.prototype);
+		restore(node, domPublic);
+	}
+	if (this.baseInterface) this.baseInterface.detach(node);
+}
+
+function bindProperty(node, implementation, field) {
+	if (typeof implementation.prototype[field] === "function") node[field] = function() {
+		var binding = implementation.getStorage(this);
+		return binding[field].apply(binding, arguments);
+	}
+	else Object.defineProperty(node, field, {
+		get: function() {
+			var binding = implementation.getStorage(this);
+			return binding[field];
+		}
+	});
+}
+DOMInterface.prototype.addBinding = function(spec) {
+	var ifName = "_" + this.name;
+	var implementation = function() {};
+	implementation.prototype = spec.prototype;
+
+	implementation.domInterface = this;
+	this.bindings.push(implementation);
+	var index = this.bindings.length - 1;
+	var domInterface = this;
+	implementation.getStorage = function(node) {
+		var domStore = domInterface.getStorage(node);
+		if (!domStore) throw "Binding not valid for that node.";
+		var binding = domStore[index];
+		if (!binding) {
+			binding = createBindingInstance(node, implementation);
+			domStore[index] = binding;
+		}
+		return binding;
 	};
+	var domPublic = implementation.domPublic = [];
+	for (var field in implementation.prototype) {
+		if (/^(_|dom)/.test(field)) continue;
+		domPublic.push(field);
+	}
+//	if (window[this.name] !== this) {
+		var domPrototype = this.prototype;
+		hide(domPrototype, domPublic);
+		domPublic.forEach(function(field) { bindProperty(domPrototype, implementation, field); });
+//	}
+	return implementation.getStorage;
 }
 
 for (var name in interfacesByName) {
 	var ifSpec = interfacesByName[name];
-	var domBinding = new DOMBinding(name);
-	domSystem[name] = domBinding;
-	if (!window[name]) window[name] = domBinding;
-	if (!window[name].prototype) window[name].prototype = domBinding.prototype;
-	
+	var domInterface = new DOMInterface(name);
+	domSystem[name] = domInterface;
+	if (!window[name]) window[name] = domInterface;
+	else domInterface.prototype = window[name].prototype;
+
 	var baseName = ifSpec.base;
-	if (baseName) domBinding.baseBinding = domSystem[baseName];
+	if (baseName) domInterface.baseInterface = domSystem[baseName];
 }
 
-// TODO tidy-up the DOMBinding utils into a class
-function lookupDOMBinding(node) {
+// TODO tidy-up the DOMInterface utils into a class
+function lookupDOMInterface(node) {
 	var rule = interfaceRulesTree;
 	while ("string" != typeof rule) {
 		var rc = rule._test(node);
 		if (rc != null) rule = rule[rc] || rule._default || "";
 		else rule = rule._null || "";
 	}
-	return domSystem[rule];
+	return rule;
 }
-function attachDOMBindings(node) {
-	var domBinding = lookupDOMBinding(node);
-	if (!domBinding) {
-		logger.error("attachDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
-		throw "Error attaching DOMBindings";
+function attachDOMInterfaces(node) {
+	var ifName = lookupDOMInterface(node);
+	var domInterface = domSystem[ifName];
+	if (!domInterface) {
+		logger.error("attachDOMInterfaces: Could not find DOMInterface for nodeType: " + node.nodeType);
+		throw "Error attaching DOMInterfaces";
 	}
-	if (nodeManager.addNode(node)) domBinding.attach(node); // FIXME assumes that if addNode fails then bindings are already attached
+	if (domInterface === window[ifName] && !node.slabID) domInterface.attach(node); // FIXME nodeManager.hasInterface(node)
 	return node;
 }
-function detachDOMBindings(node) { // MUST be called with nodeManager.releaseNodesByType(nodeType, detachDOMBindings)
-	var domBinding = lookupDOMBinding(node);
-	if (!domBinding) {
-		logger.error("detachDOMBindings: Could not find DOMBinding for nodeType: " + node.nodeType);
-		throw "Error detaching DOMBindings";
+function detachDOMInterfaces(node) { // MUST be called with nodeManager.releaseNodesByType(nodeType, detachDOMInterfaces)
+	var ifName = lookupDOMInterface(node);
+	var domInterface = domSystem[ifName];
+	if (!domInterface) {
+		logger.error("detachDOMInterfaces: Could not find DOMInterface for nodeType: " + node.nodeType);
+		throw "Error detaching DOMInterfaces";
 	}
-	domBinding.detach(node);
+	domInterface.detach(node);
 }
 
-function detachDOMBindingsByNodeType(nodeType) {
-	nodeManager.releaseNodesByType(nodeType, detachDOMBindings);
+function detachDOMInterfacesByNodeType(nodeType) {
+	nodeManager.releaseNodesByType(nodeType, detachDOMInterfaces);
 }
 
 var timerId = null,
@@ -352,11 +427,11 @@ function init() {
 
 function exit() { // FIXME
 logger.debug("Beginning exit process");
-	detachDOMBindingsByNodeType(Node.ELEMENT_NODE);
-	detachDOMBindingsByNodeType(Node.DOCUMENT_NODE);
-	detachDOMBindingsByNodeType(0); // Window
+	detachDOMInterfacesByNodeType(Node.ELEMENT_NODE);
+	detachDOMInterfacesByNodeType(Node.DOCUMENT_NODE);
+	detachDOMInterfacesByNodeType(0); // Window
 
-logger.debug("DOMBindings detached");
+logger.debug("DOMInterfaces detached");
 
 	if (window.removeEventListener) window.removeEventListener("unload", exit, false);
 	if (window.detachEvent) window.detachEvent("onunload", exit);
@@ -397,8 +472,10 @@ function __init() {
 	MAIN: switch (readyState) { // NOTE all these branches can fall-thru when they result in a state transition
 		case "uninitialized":
 			;;;logger.debug("initializing");
-			attachDOMBindings(window); // force attach
-			attachDOMBindings(document); // force attach
+/*
+			attachDOMInterfaces(window); // force attach
+			attachDOMInterfaces(document); // force attach
+*/
 			readyState = "loading";
 		case "loading":
 			;;;logger.debug("loading");
@@ -448,15 +525,14 @@ function wrap(dest, fields) {
 init();
 
 Object.copy(domSystem, { // FIXME this is a complete hack
-	addImplementation: function(name, impl) { return domSystem[name].addImplementation(impl); },
+	addBinding: function(name, spec) { return domSystem[name].addBinding(spec); },
 	bindInterface: bind,
 	releaseInterface: release,
 	hideInterface: hide,
 	restoreInterface: restore,
 	wrapInterface: wrap,
-	attach: attachDOMBindings,
-	initialize: manualInit,
-	document: {} // FIXME implement this
+	attach: attachDOMInterfaces,
+	initialize: manualInit
 });
 
 return domSystem;
