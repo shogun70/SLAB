@@ -4,8 +4,6 @@
 <head>
 <script>
 <![CDATA[
-// FIXME all the Array methods that accept a callback should clone the array before running
-
 if (!this.Meeko) this.Meeko = {};
 
 Meeko['ECMAScript5'] = (function() {
@@ -215,6 +213,7 @@ var Array = function() {
 Array.prototype = [];
 
 /*
+ FIXME all the Array methods that accept a callback should clone the array before running
  TODO optimize for sparse arrays
 */
 Array.prototype.indexOf = function(testVal, start) {
