@@ -7,7 +7,7 @@
 /*
  * ECMAScript enhancements are available
  * DOM Prototypes are available
- * Custom DOM methods should be implemented before initializing DOM system
+ * Custom DOM methods must be implemented before affected elements are accessed
  */
 HTMLFormElement.prototype.encode = function() {
  var txt = "";
@@ -17,15 +17,6 @@ HTMLFormElement.prototype.encode = function() {
  return txt;
 }
 
-/*
- * Initialize the DOM system
- */
-Meeko.stuff.domSystem.initialize();
-
-/*
- * Standard DOM interfaces now available on window and document,
- * and are (almost always) automatically available on elements
- */
 var onSubmit = function(event) {
  var form = event.target;
  confirm("Submit this data now?\n" + form.encode()) || event.preventDefault();
